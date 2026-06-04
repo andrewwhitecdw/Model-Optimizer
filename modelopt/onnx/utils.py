@@ -1502,7 +1502,9 @@ def _is_foldable_constant_cast_pattern(model: onnx.ModelProto, node: onnx.NodePr
     return False
 
 
-def _convert_constant_values(constant_node: onnx.NodeProto, cast_node: onnx.NodeProto) -> None:
+def _convert_constant_values(
+    onnx_model: onnx.ModelProto, constant_node: onnx.NodeProto, cast_node: onnx.NodeProto
+) -> None:
     """Convert the Constant node's values to the Cast node's target type."""
     cast_to_type = get_cast_to_type(cast_node)
     for attr in constant_node.attribute:
@@ -1529,6 +1531,19 @@ def _convert_constant_values(constant_node: onnx.NodeProto, cast_node: onnx.Node
                 new_tensor = onnx.numpy_helper.from_array(new_array, attr.t.name)
 
             attr.t.CopyFrom(new_tensor)
+
+            const_output = constant_node.output[0]
+            const_vi = next(
+                (vi for vi in onnx_model.graph.value_info if vi.name == const_output), None
+            )
+            if const_vi is not None:
+                const_vi.type.tensor_type.elem_type = cast_to_type
+            else:
+                onnx_model.graph.value_info.append(
+                    onnx.helper.make_tensor_value_info(
+                        const_output, cast_to_type, list(new_tensor.dims)
+                    )
+                )
             break
 
 
@@ -1570,7 +1585,7 @@ def remove_redundant_casts(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
                 cast_producers = get_producer_nodes(onnx_model, node.input[0])
                 assert len(cast_producers) == 1 and cast_producers[0].op_type == "Constant"
                 constant_producer = cast_producers[0]
-                _convert_constant_values(constant_producer, node)
+                _convert_constant_values(onnx_model, constant_producer, node)
                 _bypass_cast_node(onnx_model, node)
                 logger.debug(f"Found foldable Constant->Cast pattern, removing {node.name}")
 
