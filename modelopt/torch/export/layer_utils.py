@@ -60,6 +60,7 @@ from .model_config import (
     RgLruConfig,
 )
 from .model_config_utils import pad_weights
+from .modeling import match_moe_block
 from .postprocess import view_as_float8_e4m3fn_if_needed, view_as_uint8_if_needed
 from .quant_utils import (
     get_activation_scaling_factor,
@@ -93,25 +94,14 @@ def get_experts_list(
     """
     experts_list = []
 
-    # Define linear layer names for different model types
-    if "mixtralforcausallm" in model_type:
-        linear_names = ["w1", "w2", "w3"]
-    elif any(
-        qwen_variant in model_type
-        for qwen_variant in [
-            "qwenmoeforcausallm",
-            "qwen2moeforcausallm",
-            "qwen3moeforcausallm",
-            "qwen3nextforcausallm",
-        ]
-    ):
-        linear_names = ["gate_proj", "down_proj", "up_proj"]
-    elif "nemotronhforcausallm" in model_type:
-        linear_names = ["up_proj", "down_proj"]
-    elif "gemma4" in model_type:
-        linear_names = ["gate_proj", "down_proj", "up_proj"]
-    else:
+    # Expert linear names are per-family data (modeling/families/*). The grouped export
+    # path only supports families whose experts are iterable per-expert sub-modules
+    # (Mixtral, Qwen MoE, NemotronH, Gemma4); stacked/fused layouts (DBRX, GptOss, ...)
+    # raise NotImplementedError here and are handled by other paths.
+    spec = match_moe_block(module)
+    if spec is None or not spec.has_iterable_experts or spec.expert_linear_names is None:
         raise NotImplementedError(f" {model_type} not supported")
+    linear_names = list(spec.expert_linear_names)
 
     # Common logic for all supported model types
     experts_list.extend(
@@ -991,6 +981,12 @@ def get_expert_linear_names(module: nn.Module) -> list[str]:
         first_proj_attr = getattr(module.experts, "_first_proj_attr", "gate_up_proj")
         if hasattr(module.experts, f"{first_proj_attr}_weight_quantizers"):
             return [first_proj_attr, "down_proj"]
+
+    # Resolve expert names from the model-family registry; fall back to the mapping
+    # below when no family spec matches the MoE block.
+    spec = match_moe_block(module)
+    if spec is not None and spec.expert_linear_names is not None:
+        return list(spec.expert_linear_names)
 
     if module_match_name_list(
         module,
