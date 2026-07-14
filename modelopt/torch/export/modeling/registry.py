@@ -24,6 +24,7 @@ import torch.nn as nn
 from .base import ModelSpec
 
 __all__ = [
+    "iter_pqs_fuse_rules",
     "match_moe_block",
     "register",
 ]
@@ -35,6 +36,16 @@ def register(spec: ModelSpec) -> ModelSpec:
     """Register a model-family spec and return it."""
     _SPECS.append(spec)
     return spec
+
+
+def iter_pqs_fuse_rules():
+    """Yield every ``(module_class_substrings, fuse_into, fuse_from)`` AWQ fusion rule.
+
+    Aggregated across all registered specs (the consumer matches each model module
+    against the substrings, so the order across families does not matter).
+    """
+    for spec in _SPECS:
+        yield from spec.pqs_fuse_rules
 
 
 def match_moe_block(module: nn.Module) -> ModelSpec | None:

@@ -26,10 +26,10 @@ helpers) consume. Inventory of model-specific logic reachable from the HF path:
 
 | Item | Location | Kind |
 |---|---|---|
-| MoE expert linear names (Qwen/DeepSeek/Mixtral/DBRX/GptOss/NemotronH/Gemma4) | `layer_utils.get_expert_linear_names` | data (if/elif chain) |
-| Duplicate expert-naming table + iterable-experts support gate | `layer_utils.get_experts_list` | data (if/elif chain) |
-| MoE block class-name list | `layer_utils.is_moe` | data (shared with TRT-LLM path) |
-| AWQ `pre_quant_scale` fusion rules (Llama/Qwen3) | `quant_utils.PQS_FUSE_MODULE_MAPPING` | data (table) |
+| MoE expert linear names (Qwen/DeepSeek/Mixtral/DBRX/GptOss/NemotronH/Gemma4) | `layer_utils.get_expert_linear_names` | data — **migrated (P1)** |
+| Duplicate expert-naming table + iterable-experts support gate | `layer_utils.get_experts_list` | data — **migrated (P1)** |
+| MoE block class-name list | `layer_utils.is_moe` | data — **migrated (P3)** |
+| AWQ `pre_quant_scale` fusion rules (Llama/Qwen3) | `quant_utils.PQS_FUSE_MODULE_MAPPING` | data — **migrated (P2)** |
 | weight+1 layernorm class names (Gemma RMSNorm, LayerNorm1P) | `quant_utils._layernorm_uses_weight_plus_one` | data |
 | Handler match keys (Llama4TextExperts, GptOssExperts, DbrxExperts, QuantMoELinear) | `hf_export_handlers.py` | dispatch (stays: structural, per-module) |
 | Fused-expert gated/non-gated split (`gate_up_proj` vs `up_proj`) | `moe_utils.py` | data + structure |
@@ -77,9 +77,9 @@ against existing export tests.
 | Step | What | Status |
 |---|---|---|
 | **P1** | Registry skeleton + MoE expert naming: `get_expert_linear_names` and `get_experts_list` read `spec.expert_linear_names` / `spec.has_iterable_experts`. The #1 "add a MoE model" shotgun-surgery driver. | this PR |
-| **P2** | `PQS_FUSE_MODULE_MAPPING` → `spec.pqs_fuse_rules`, aggregated across specs. | planned |
-| **P3** | `is_moe` class-name list → `spec.moe_block_names` (shared consumer: keep fallback until the TRT-LLM path moves out). | planned |
-| **P4** | HF handlers consume specs directly; fold remaining `moe_utils` naming data into specs. | planned |
+| **P2** | `PQS_FUSE_MODULE_MAPPING` → `spec.pqs_fuse_rules`, aggregated via `iter_pqs_fuse_rules` (llama/qwen families). | this PR |
+| **P3** | `is_moe` explicit class-name list → `spec.moe_block_names` (arctic/dbrx_ffn are identification-only specs: no expert naming, so expert-name lookups keep the engine default). The generic `*SparseMoeBlock`/`*MoeLayer` conventions and the structural router+experts check stay in the engine. | this PR |
+| **P4** | HF handlers consume specs directly; fold remaining `moe_utils` naming data into specs; share the matcher machinery with the top-level dispatch registry (#1939). | planned |
 | **OUT** | TRT-LLM path branches (`decoder_type` chains in `build_*`, `model_config_export.py`, `tensorrt_llm_utils.py`): frozen, moved out unchanged on a separate track. Dead code found during inventory (`MODEL_NAME_TO_TYPE`, `get_model_type`, `adjust_attn_amax_values`, `update_experts_avg_prequant_scale`) is deleted on that track too. | separate track |
 
 **Guardrails:** fallback-first; one data category per PR; the engine keeps the

@@ -25,3 +25,12 @@ register(
         expert_linear_names=("w1_linear", "w2_linear", "v1_linear"),
     )
 )
+
+# HF DbrxFFN: MoE-block identification only (non-standard block name for is_moe);
+# expert naming intentionally unset so expert-name lookups keep the engine default.
+register(
+    ModelSpec(
+        name="dbrx_ffn",
+        moe_block_names=("DbrxFFN",),
+    )
+)

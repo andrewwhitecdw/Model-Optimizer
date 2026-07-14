@@ -18,8 +18,8 @@
 import pytest
 import torch.nn as nn
 
-from modelopt.torch.export.layer_utils import get_expert_linear_names, get_experts_list
-from modelopt.torch.export.modeling import match_moe_block
+from modelopt.torch.export.layer_utils import get_expert_linear_names, get_experts_list, is_moe
+from modelopt.torch.export.modeling import iter_pqs_fuse_rules, match_moe_block
 
 
 class _FakeQwen3MoeSparseMoeBlock(nn.Module):
@@ -92,3 +92,34 @@ def test_get_experts_list_rejects_non_iterable_families():
 
     with pytest.raises(NotImplementedError):
         get_experts_list(_UnknownMoeBlock(), "unknownforcausallm")
+
+
+class _FakeArcticMoE(nn.Module):
+    pass
+
+
+class _FakeDbrxFFN(nn.Module):
+    pass
+
+
+def test_is_moe_matches_registered_non_standard_names():
+    # Non-standard MoE block names (no *SparseMoeBlock suffix, no router/experts
+    # attributes) resolve through the family registry.
+    assert is_moe(_FakeArcticMoE())
+    assert is_moe(_FakeDbrxFFN())
+    assert not is_moe(_UnknownMoeBlock())
+
+
+def test_pqs_fuse_rules_match_legacy_mapping():
+    # Aggregated per-family rules must reproduce the legacy PQS_FUSE_MODULE_MAPPING.
+    rules = {
+        (frozenset(substrings), fuse_into, fuse_from)
+        for substrings, fuse_into, fuse_from in iter_pqs_fuse_rules()
+    }
+    legacy = {
+        (frozenset({"LlamaAttention"}), "v_proj", "o_proj"),
+        (frozenset({"LlamaMLP"}), "up_proj", "down_proj"),
+        (frozenset({"Qwen3Attention", "Qwen3MoeAttention"}), "v_proj", "o_proj"),
+        (frozenset({"Qwen3MLP", "Qwen3MoeMLP"}), "up_proj", "down_proj"),
+    }
+    assert rules == legacy

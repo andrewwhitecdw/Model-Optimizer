@@ -306,8 +306,8 @@ def is_moe(module: nn.Module) -> bool:
     # Auto-detect common MoE patterns
     if name.endswith("sparsemoeblock") or "moelayer" in name:
         return True
-    # Explicit matches for non-standard naming
-    if any(key in name for key in ["arcticmoe", "deepseekmoe", "dbrxffn", "nemotronhmoe"]):
+    # Non-standard MoE block names are per-family data (modeling/families/*).
+    if match_moe_block(module) is not None:
         return True
     # Structural detection: modules with router + experts (e.g. Gemma4TextDecoderLayer)
     return (

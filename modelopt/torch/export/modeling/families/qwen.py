@@ -31,3 +31,15 @@ register(
         has_iterable_experts=True,
     )
 )
+
+# Qwen3 (dense + MoE) AWQ pre_quant_scale fusion: fold o_proj into v_proj,
+# down_proj into up_proj.
+register(
+    ModelSpec(
+        name="qwen3",
+        pqs_fuse_rules=(
+            (("Qwen3Attention", "Qwen3MoeAttention"), "v_proj", "o_proj"),
+            (("Qwen3MLP", "Qwen3MoeMLP"), "up_proj", "down_proj"),
+        ),
+    )
+)

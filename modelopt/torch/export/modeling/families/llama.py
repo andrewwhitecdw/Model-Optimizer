@@ -13,6 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Per-model-family export specs. Importing each module registers its specs."""
+"""Llama family export specs."""
 
-from . import arctic, dbrx, deepseek, gemma, gptoss, llama, mixtral, nemotron, qwen
+from ..base import ModelSpec
+from ..registry import register
+
+register(
+    ModelSpec(
+        name="llama",
+        # AWQ pre_quant_scale fusion: fold o_proj into v_proj, down_proj into up_proj.
+        pqs_fuse_rules=(
+            (("LlamaAttention",), "v_proj", "o_proj"),
+            (("LlamaMLP",), "up_proj", "down_proj"),
+        ),
+    )
+)

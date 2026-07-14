@@ -48,3 +48,9 @@ class ModelSpec:
     """True when experts are per-expert iterable sub-modules (Mixtral, Qwen MoE,
     NemotronH, Gemma4) and can be grouped by ``get_experts_list``; False for stacked
     or fused layouts (DBRX, GptOss)."""
+
+    pqs_fuse_rules: tuple[tuple[tuple[str, ...], str, str], ...] = ()
+    """AWQ ``pre_quant_scale`` fusion rules, each a ``(module_class_substrings,
+    fuse_into, fuse_from)`` triple: for a module whose class name contains one of the
+    substrings, the pre_quant_scale on ``fuse_from`` is folded into ``fuse_into``
+    (e.g. attention ``o_proj`` -> ``v_proj``, MLP ``down_proj`` -> ``up_proj``)."""
