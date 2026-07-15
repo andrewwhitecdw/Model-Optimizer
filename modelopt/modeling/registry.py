@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Registry that resolves a model sub-module to its ``ModelSpec``.
+"""Registry of per-model specs, queried by spec type.
 
 Model modules register their specs at import time (see ``models/``). Lookups return
 ``None`` when nothing matches, so callers can fall back to their default behavior.
@@ -23,45 +23,57 @@ Matching is by class-name string only, so this package stays dependency-free (an
 here).
 """
 
-from typing import TYPE_CHECKING
+from collections.abc import Iterator
+from typing import TYPE_CHECKING, TypeVar
 
 from .base import ModelSpec
+from .export import ExportSpec
 
 if TYPE_CHECKING:
     import torch.nn as nn
 
 __all__ = [
     "iter_pqs_fuse_rules",
+    "iter_specs",
     "match_moe_block",
     "register",
 ]
 
+SpecT = TypeVar("SpecT", bound=ModelSpec)
+
 _SPECS: list[ModelSpec] = []
 
 
-def register(spec: ModelSpec) -> ModelSpec:
+def register(spec: SpecT) -> SpecT:
     """Register a model spec and return it."""
     _SPECS.append(spec)
     return spec
 
 
+def iter_specs(spec_cls: type[SpecT]) -> Iterator[SpecT]:
+    """Yield every registered spec of type ``spec_cls`` (in registration order)."""
+    for spec in _SPECS:
+        if isinstance(spec, spec_cls):
+            yield spec
+
+
 def iter_pqs_fuse_rules():
     """Yield every ``(module_class_substrings, fuse_into, fuse_from)`` AWQ fusion rule.
 
-    Aggregated across all registered specs (the consumer matches each model module
-    against the substrings, so the order across specs does not matter).
+    Aggregated across all registered export specs (the consumer matches each model
+    module against the substrings, so the order across specs does not matter).
     """
-    for spec in _SPECS:
+    for spec in iter_specs(ExportSpec):
         yield from spec.pqs_fuse_rules
 
 
-def match_moe_block(module: "nn.Module") -> ModelSpec | None:
-    """Return the spec matching ``module``'s class name against ``moe_block_names``.
+def match_moe_block(module: "nn.Module") -> ExportSpec | None:
+    """Return the export spec matching ``module``'s class name against ``moe_block_names``.
 
     Case-insensitive substring match against ``type(module).__name__``.
     """
     cls_name = type(module).__name__.lower()
-    for spec in _SPECS:
+    for spec in iter_specs(ExportSpec):
         if any(name.lower() in cls_name for name in spec.moe_block_names):
             return spec
     return None

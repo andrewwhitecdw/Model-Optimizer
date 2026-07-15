@@ -15,13 +15,13 @@
 
 """Snowflake Arctic specs (trust-remote-code model type ``arctic``)."""
 
-from ..base import ModelSpec
+from ..export import ExportSpec
 from ..registry import register
 
 # MoE-block identification only (non-standard block name for is_moe); expert naming
 # intentionally unset so expert-name lookups keep the engine default.
 register(
-    ModelSpec(
+    ExportSpec(
         model_type="arctic",
         moe_block_names=("ArcticMoE",),
     )

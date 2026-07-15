@@ -19,11 +19,11 @@ Matches the remote-code ``DeepseekMoE`` block, not the HF-native ``deepseek_v3``
 classes.
 """
 
-from ..base import ModelSpec
+from ..export import ExportSpec
 from ..registry import register
 
 register(
-    ModelSpec(
+    ExportSpec(
         model_type="deepseek",
         moe_block_names=("DeepseekMoE",),
         expert_linear_names=("gate_proj", "down_proj", "up_proj"),

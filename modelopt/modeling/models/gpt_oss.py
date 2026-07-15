@@ -15,11 +15,11 @@
 
 """GPT-OSS specs (HF model type ``gpt_oss``)."""
 
-from ..base import ModelSpec
+from ..export import ExportSpec
 from ..registry import register
 
 register(
-    ModelSpec(
+    ExportSpec(
         model_type="gpt_oss",
         # GPT-OSS fuses gate and up into a single gate_up_proj.
         moe_block_names=("GptOssMoE",),

@@ -15,11 +15,11 @@
 
 """DBRX specs (HF model type ``dbrx``)."""
 
-from ..base import ModelSpec
+from ..export import ExportSpec
 from ..registry import register
 
 register(
-    ModelSpec(
+    ExportSpec(
         model_type="dbrx",
         moe_block_names=("DBRXMoeSparseMoeBlock",),
         expert_linear_names=("w1_linear", "w2_linear", "v1_linear"),
@@ -29,7 +29,7 @@ register(
 # HF DbrxFFN: MoE-block identification only (non-standard block name for is_moe);
 # expert naming intentionally unset so expert-name lookups keep the engine default.
 register(
-    ModelSpec(
+    ExportSpec(
         model_type="dbrx",
         moe_block_names=("DbrxFFN",),
     )

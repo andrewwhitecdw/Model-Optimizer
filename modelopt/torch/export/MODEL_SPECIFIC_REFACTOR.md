@@ -49,11 +49,14 @@ Two layers:
 
 ```text
 modelopt/modeling/
-  base.py        # ModelSpec dataclass — the per-model contract
-  registry.py    # register() + lookups; returns None when unmatched
+  base.py        # ModelSpec — common base class (model_type)
+  export.py      # ExportSpec(ModelSpec) — data for the unified HF export path
+                 # (future: quantization / speculative-decoding spec classes)
+  registry.py    # register() + lookups, queried by spec type; None when unmatched
   __init__.py    # re-exports; importing it registers all specs
   models/        # one small file per HF model type (mirrors transformers.models);
-                 # import == registration
+                 # import == registration; a model registers one spec instance per
+                 # subsystem it customizes
 ```
 
 Model type names mirror

@@ -15,11 +15,11 @@
 
 """Qwen3-Next specs (HF model type ``qwen3_next``)."""
 
-from ..base import ModelSpec
+from ..export import ExportSpec
 from ..registry import register
 
 register(
-    ModelSpec(
+    ExportSpec(
         model_type="qwen3_next",
         moe_block_names=("Qwen3NextSparseMoeBlock",),
         expert_linear_names=("gate_proj", "down_proj", "up_proj"),
