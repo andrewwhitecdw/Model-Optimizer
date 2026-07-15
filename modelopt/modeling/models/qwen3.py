@@ -20,7 +20,7 @@ from ..registry import register
 
 register(
     ModelSpec(
-        name="qwen3",
+        model_type="qwen3",
         # AWQ pre_quant_scale fusion: fold o_proj into v_proj, down_proj into up_proj.
         pqs_fuse_rules=(
             (("Qwen3Attention",), "v_proj", "o_proj"),

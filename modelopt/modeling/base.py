@@ -35,8 +35,10 @@ class ModelSpec:
     ``type(module).__name__`` (e.g. ``"Qwen3MoeSparseMoeBlock"``).
     """
 
-    name: str
-    """Unique spec name; the HF model type where one exists (e.g. ``"qwen3_moe"``)."""
+    model_type: str
+    """The HF model type this spec belongs to (``config.model_type``, e.g.
+    ``"qwen3_moe"``). Not necessarily unique: a model type may register several specs
+    for different module layouts (e.g. two ``mixtral`` MoE-block variants)."""
 
     moe_block_names: tuple[str, ...] = ()
     """Matching key: MoE block class-name substrings (case-insensitive)."""

@@ -20,7 +20,7 @@ from ..registry import register
 
 register(
     ModelSpec(
-        name="dbrx",
+        model_type="dbrx",
         moe_block_names=("DBRXMoeSparseMoeBlock",),
         expert_linear_names=("w1_linear", "w2_linear", "v1_linear"),
     )
@@ -30,7 +30,7 @@ register(
 # expert naming intentionally unset so expert-name lookups keep the engine default.
 register(
     ModelSpec(
-        name="dbrx_ffn",
+        model_type="dbrx",
         moe_block_names=("DbrxFFN",),
     )
 )

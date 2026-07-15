@@ -24,7 +24,7 @@ from ..registry import register
 
 register(
     ModelSpec(
-        name="deepseek",
+        model_type="deepseek",
         moe_block_names=("DeepseekMoE",),
         expert_linear_names=("gate_proj", "down_proj", "up_proj"),
     )

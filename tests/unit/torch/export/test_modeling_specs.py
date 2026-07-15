@@ -37,7 +37,7 @@ class _UnknownMoeBlock(nn.Module):
 def test_match_moe_block_by_substring():
     spec = match_moe_block(_FakeQwen3MoeSparseMoeBlock())
     assert spec is not None
-    assert spec.name == "qwen3_moe"
+    assert spec.model_type == "qwen3_moe"
     assert spec.expert_linear_names == ("gate_proj", "down_proj", "up_proj")
     assert spec.has_iterable_experts
 
@@ -45,7 +45,7 @@ def test_match_moe_block_by_substring():
 def test_match_moe_block_matches_quantized_class_name():
     spec = match_moe_block(_QuantMixtralSparseMoeBlock())
     assert spec is not None
-    assert spec.name == "mixtral"
+    assert spec.model_type == "mixtral"
 
 
 def test_match_moe_block_unmatched_returns_none():

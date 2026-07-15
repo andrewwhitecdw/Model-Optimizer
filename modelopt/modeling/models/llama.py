@@ -20,7 +20,7 @@ from ..registry import register
 
 register(
     ModelSpec(
-        name="llama",
+        model_type="llama",
         # AWQ pre_quant_scale fusion: fold o_proj into v_proj, down_proj into up_proj.
         pqs_fuse_rules=(
             (("LlamaAttention",), "v_proj", "o_proj"),

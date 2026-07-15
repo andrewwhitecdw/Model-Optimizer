@@ -20,7 +20,7 @@ from ..registry import register
 
 register(
     ModelSpec(
-        name="gpt_oss",
+        model_type="gpt_oss",
         # GPT-OSS fuses gate and up into a single gate_up_proj.
         moe_block_names=("GptOssMoE",),
         expert_linear_names=("gate_up_proj", "down_proj"),

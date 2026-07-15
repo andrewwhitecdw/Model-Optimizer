@@ -22,7 +22,7 @@ from ..registry import register
 # intentionally unset so expert-name lookups keep the engine default.
 register(
     ModelSpec(
-        name="arctic",
+        model_type="arctic",
         moe_block_names=("ArcticMoE",),
     )
 )

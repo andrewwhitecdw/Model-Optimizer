@@ -20,7 +20,7 @@ from ..registry import register
 
 register(
     ModelSpec(
-        name="qwen2_moe",
+        model_type="qwen2_moe",
         moe_block_names=("Qwen2MoeSparseMoeBlock",),
         expert_linear_names=("gate_proj", "down_proj", "up_proj"),
         has_iterable_experts=True,
