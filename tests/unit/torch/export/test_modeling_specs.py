@@ -13,13 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for the model-family export spec registry (modelopt.torch.export.modeling)."""
+"""Unit tests for the per-model spec registry (modelopt.modeling)."""
 
 import pytest
 import torch.nn as nn
 
+from modelopt.modeling import iter_pqs_fuse_rules, match_moe_block
 from modelopt.torch.export.layer_utils import get_expert_linear_names, get_experts_list, is_moe
-from modelopt.torch.export.modeling import iter_pqs_fuse_rules, match_moe_block
 
 
 class _FakeQwen3MoeSparseMoeBlock(nn.Module):
@@ -37,7 +37,7 @@ class _UnknownMoeBlock(nn.Module):
 def test_match_moe_block_by_substring():
     spec = match_moe_block(_FakeQwen3MoeSparseMoeBlock())
     assert spec is not None
-    assert spec.name == "qwen_moe"
+    assert spec.name == "qwen3_moe"
     assert spec.expert_linear_names == ("gate_proj", "down_proj", "up_proj")
     assert spec.has_iterable_experts
 
@@ -53,7 +53,7 @@ def test_match_moe_block_unmatched_returns_none():
 
 
 def test_get_expert_linear_names_falls_back_when_unmatched():
-    # No family spec matches — the legacy default (w1/w2/w3) must be preserved.
+    # No spec matches — the legacy default (w1/w2/w3) must be preserved.
     assert get_expert_linear_names(_UnknownMoeBlock()) == ["w1", "w2", "w3"]
 
 
@@ -79,7 +79,7 @@ def test_get_experts_list_groups_by_spec_linear_names():
     assert groups[1][2] is module.experts[2].down_proj
 
 
-def test_get_experts_list_rejects_non_iterable_families():
+def test_get_experts_list_rejects_non_iterable_layouts():
     # DBRX matches a spec but is not an iterable-experts layout; grouped export
     # must keep rejecting it (legacy behavior).
     class _FakeDBRXMoeSparseMoeBlock(nn.Module):
@@ -104,22 +104,26 @@ class _FakeDbrxFFN(nn.Module):
 
 def test_is_moe_matches_registered_non_standard_names():
     # Non-standard MoE block names (no *SparseMoeBlock suffix, no router/experts
-    # attributes) resolve through the family registry.
+    # attributes) resolve through the model spec registry.
     assert is_moe(_FakeArcticMoE())
     assert is_moe(_FakeDbrxFFN())
     assert not is_moe(_UnknownMoeBlock())
 
 
 def test_pqs_fuse_rules_match_legacy_mapping():
-    # Aggregated per-family rules must reproduce the legacy PQS_FUSE_MODULE_MAPPING.
+    # Aggregated per-model rules, flattened to (class_substring, fuse_into, fuse_from)
+    # triples, must reproduce the legacy PQS_FUSE_MODULE_MAPPING.
     rules = {
-        (frozenset(substrings), fuse_into, fuse_from)
+        (substring, fuse_into, fuse_from)
         for substrings, fuse_into, fuse_from in iter_pqs_fuse_rules()
+        for substring in substrings
     }
     legacy = {
-        (frozenset({"LlamaAttention"}), "v_proj", "o_proj"),
-        (frozenset({"LlamaMLP"}), "up_proj", "down_proj"),
-        (frozenset({"Qwen3Attention", "Qwen3MoeAttention"}), "v_proj", "o_proj"),
-        (frozenset({"Qwen3MLP", "Qwen3MoeMLP"}), "up_proj", "down_proj"),
+        ("LlamaAttention", "v_proj", "o_proj"),
+        ("LlamaMLP", "up_proj", "down_proj"),
+        ("Qwen3Attention", "v_proj", "o_proj"),
+        ("Qwen3MoeAttention", "v_proj", "o_proj"),
+        ("Qwen3MLP", "up_proj", "down_proj"),
+        ("Qwen3MoeMLP", "up_proj", "down_proj"),
     }
     assert rules == legacy

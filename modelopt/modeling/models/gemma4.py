@@ -13,27 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Mixtral family export specs."""
+"""Gemma4 specs (HF model type ``gemma4``)."""
 
 from ..base import ModelSpec
 from ..registry import register
 
-# Mixtral with iterable experts uses w1/w2/w3. Fused experts (transformers 5.0+) are
-# detected from their per-expert quantizer attributes and need no naming override here.
 register(
     ModelSpec(
-        name="mixtral",
-        moe_block_names=("MixtralSparseMoeBlock",),
-        expert_linear_names=("w1", "w2", "w3"),
+        name="gemma4",
+        # Gemma4 MoE experts are unfused into per-expert nn.Linear layers.
+        moe_block_names=("Gemma4TextDecoderLayer",),
+        expert_linear_names=("gate_proj", "down_proj", "up_proj"),
         has_iterable_experts=True,
-    )
-)
-
-# Older transformers naming for Mixtral.
-register(
-    ModelSpec(
-        name="mixtral_mcore",
-        moe_block_names=("MixtralMoeSparseMoeBlock",),
-        expert_linear_names=("linear_fc1", "linear_fc2"),
     )
 )

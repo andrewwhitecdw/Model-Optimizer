@@ -13,17 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Gemma family export specs."""
+"""GPT-OSS specs (HF model type ``gpt_oss``)."""
 
 from ..base import ModelSpec
 from ..registry import register
 
 register(
     ModelSpec(
-        name="gemma4_moe",
-        # Gemma4 MoE experts are unfused into per-expert nn.Linear layers.
-        moe_block_names=("Gemma4TextDecoderLayer",),
-        expert_linear_names=("gate_proj", "down_proj", "up_proj"),
-        has_iterable_experts=True,
+        name="gpt_oss",
+        # GPT-OSS fuses gate and up into a single gate_up_proj.
+        moe_block_names=("GptOssMoE",),
+        expert_linear_names=("gate_up_proj", "down_proj"),
     )
 )

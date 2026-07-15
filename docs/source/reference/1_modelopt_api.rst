@@ -10,5 +10,6 @@ modelopt API
    :recursive:
 
    modelopt.deploy
+   modelopt.modeling
    modelopt.onnx
    modelopt.torch

@@ -13,7 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""DeepSeek family export specs."""
+"""DeepSeek-MoE specs (trust-remote-code model type ``deepseek``).
+
+Matches the remote-code ``DeepseekMoE`` block, not the HF-native ``deepseek_v3``
+classes.
+"""
 
 from ..base import ModelSpec
 from ..registry import register

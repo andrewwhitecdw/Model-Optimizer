@@ -13,16 +13,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Arctic family export specs."""
+"""Mixtral specs (HF model type ``mixtral``)."""
 
 from ..base import ModelSpec
 from ..registry import register
 
-# MoE-block identification only (non-standard block name for is_moe); expert naming
-# intentionally unset so expert-name lookups keep the engine default.
+# Mixtral with iterable experts uses w1/w2/w3. Fused experts (transformers 5.0+) are
+# detected from their per-expert quantizer attributes and need no naming override here.
 register(
     ModelSpec(
-        name="arctic",
-        moe_block_names=("ArcticMoE",),
+        name="mixtral",
+        moe_block_names=("MixtralSparseMoeBlock",),
+        expert_linear_names=("w1", "w2", "w3"),
+        has_iterable_experts=True,
+    )
+)
+
+# Older transformers naming for Mixtral.
+register(
+    ModelSpec(
+        name="mixtral_mcore",
+        moe_block_names=("MixtralMoeSparseMoeBlock",),
+        expert_linear_names=("linear_fc1", "linear_fc2"),
     )
 )

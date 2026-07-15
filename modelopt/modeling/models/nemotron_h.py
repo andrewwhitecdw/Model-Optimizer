@@ -13,24 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""DBRX family export specs."""
+"""Nemotron-H specs (HF model type ``nemotron_h``)."""
 
 from ..base import ModelSpec
 from ..registry import register
 
 register(
     ModelSpec(
-        name="dbrx",
-        moe_block_names=("DBRXMoeSparseMoeBlock",),
-        expert_linear_names=("w1_linear", "w2_linear", "v1_linear"),
-    )
-)
-
-# HF DbrxFFN: MoE-block identification only (non-standard block name for is_moe);
-# expert naming intentionally unset so expert-name lookups keep the engine default.
-register(
-    ModelSpec(
-        name="dbrx_ffn",
-        moe_block_names=("DbrxFFN",),
+        name="nemotron_h",
+        # NemotronHMOE experts (NemotronHMLP) use up_proj and down_proj only (no gate).
+        moe_block_names=("NemotronHMOE",),
+        expert_linear_names=("up_proj", "down_proj"),
+        has_iterable_experts=True,
     )
 )

@@ -13,17 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Nemotron family export specs."""
+"""Per-model descriptors, organized by HF model type.
 
-from ..base import ModelSpec
-from ..registry import register
+Holds declarative per-model data (no algorithms), one module per HF model type under
+``models/``, mirroring ``transformers.models``. Consumers (e.g. the unified HF export
+path) resolve a ``ModelSpec`` via the registry lookups and read its fields; an
+unmatched lookup returns ``None`` so callers fall back to their default behavior.
+"""
 
-register(
-    ModelSpec(
-        name="nemotron_h",
-        # NemotronHMOE experts (NemotronHMLP) use up_proj and down_proj only (no gate).
-        moe_block_names=("NemotronHMOE",),
-        expert_linear_names=("up_proj", "down_proj"),
-        has_iterable_experts=True,
-    )
-)
+# Importing models registers every spec as a side effect.
+from . import models
+from .base import *
+from .registry import *

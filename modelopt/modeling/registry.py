@@ -15,13 +15,20 @@
 
 """Registry that resolves a model sub-module to its ``ModelSpec``.
 
-Families register their specs at import time (see ``families/``). Lookups return
+Model modules register their specs at import time (see ``models/``). Lookups return
 ``None`` when nothing matches, so callers can fall back to their default behavior.
+
+Matching is by class-name string only, so this package stays dependency-free (any
+``nn.Module`` — or any object — can be passed to the lookups without importing torch
+here).
 """
 
-import torch.nn as nn
+from typing import TYPE_CHECKING
 
 from .base import ModelSpec
+
+if TYPE_CHECKING:
+    import torch.nn as nn
 
 __all__ = [
     "iter_pqs_fuse_rules",
@@ -33,7 +40,7 @@ _SPECS: list[ModelSpec] = []
 
 
 def register(spec: ModelSpec) -> ModelSpec:
-    """Register a model-family spec and return it."""
+    """Register a model spec and return it."""
     _SPECS.append(spec)
     return spec
 
@@ -42,13 +49,13 @@ def iter_pqs_fuse_rules():
     """Yield every ``(module_class_substrings, fuse_into, fuse_from)`` AWQ fusion rule.
 
     Aggregated across all registered specs (the consumer matches each model module
-    against the substrings, so the order across families does not matter).
+    against the substrings, so the order across specs does not matter).
     """
     for spec in _SPECS:
         yield from spec.pqs_fuse_rules
 
 
-def match_moe_block(module: nn.Module) -> ModelSpec | None:
+def match_moe_block(module: "nn.Module") -> ModelSpec | None:
     """Return the spec matching ``module``'s class name against ``moe_block_names``.
 
     Case-insensitive substring match against ``type(module).__name__``.

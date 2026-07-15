@@ -13,16 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GPT-OSS family export specs."""
+"""Qwen3.5-MoE specs (HF model type ``qwen3_5_moe``)."""
 
 from ..base import ModelSpec
 from ..registry import register
 
 register(
     ModelSpec(
-        name="gptoss",
-        # GPT-OSS fuses gate and up into a single gate_up_proj.
-        moe_block_names=("GptOssMoE",),
-        expert_linear_names=("gate_up_proj", "down_proj"),
+        name="qwen3_5_moe",
+        moe_block_names=("Qwen3_5MoeSparseMoeBlock",),
+        expert_linear_names=("gate_proj", "down_proj", "up_proj"),
+        has_iterable_experts=True,
     )
 )

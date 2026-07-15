@@ -25,6 +25,7 @@ import torch
 import torch.nn as nn
 
 from modelopt import __version__
+from modelopt.modeling import iter_pqs_fuse_rules
 from modelopt.torch.quantization.model_calib import (
     enable_stats_collection,
     finish_stats_collection,
@@ -70,7 +71,6 @@ from .model_config import (
     QUANTIZATION_W4A8_NVFP4_FP8,
     QUANTIZATION_W4A16_NVFP4,
 )
-from .modeling import iter_pqs_fuse_rules
 
 logger = logging.getLogger(__name__)
 
@@ -1144,7 +1144,7 @@ def _update_svdquant(modules, new_pre_quant_scale):
         finish_stats_collection(module.weight_quantizer)
 
 
-# AWQ pre_quant_scale fusion rules are per-model data and live in modeling/families/*:
+# AWQ pre_quant_scale fusion rules are per-model data and live in modelopt/modeling/models/*:
 #   - Attention: fold o_proj's pre_quant_scale into v_proj's output dimension.
 #       Before: o_proj_out = [attn @ (v_proj_in @ v_proj.W^T)^T * scale] @ o_proj.W^T
 #       After:  o_proj_out = [attn @ (v_proj_in @ (v_proj.W * scale)^T)^T] @ o_proj.W^T

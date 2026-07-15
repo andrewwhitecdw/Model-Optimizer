@@ -13,6 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Per-model-family export specs. Importing each module registers its specs."""
+"""Snowflake Arctic specs (trust-remote-code model type ``arctic``)."""
 
-from . import arctic, dbrx, deepseek, gemma, gptoss, llama, mixtral, nemotron, qwen
+from ..base import ModelSpec
+from ..registry import register
+
+# MoE-block identification only (non-standard block name for is_moe); expert naming
+# intentionally unset so expert-name lookups keep the engine default.
+register(
+    ModelSpec(
+        name="arctic",
+        moe_block_names=("ArcticMoE",),
+    )
+)

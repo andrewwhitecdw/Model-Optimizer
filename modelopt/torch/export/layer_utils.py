@@ -28,6 +28,7 @@ try:
 except Exception:
     warn("Cannot find transformers package. Hugginface modules cannot be exported.")
 
+from modelopt.modeling import match_moe_block
 from modelopt.torch.utils import distributed as dist
 from modelopt.torch.utils import import_plugin
 
@@ -60,7 +61,6 @@ from .model_config import (
     RgLruConfig,
 )
 from .model_config_utils import pad_weights
-from .modeling import match_moe_block
 from .postprocess import view_as_float8_e4m3fn_if_needed, view_as_uint8_if_needed
 from .quant_utils import (
     get_activation_scaling_factor,
@@ -94,7 +94,7 @@ def get_experts_list(
     """
     experts_list = []
 
-    # Expert linear names are per-family data (modeling/families/*). The grouped export
+    # Expert linear names are per-model data (modelopt/modeling/models/*). The grouped export
     # path only supports families whose experts are iterable per-expert sub-modules
     # (Mixtral, Qwen MoE, NemotronH, Gemma4); stacked/fused layouts (DBRX, GptOss, ...)
     # raise NotImplementedError here and are handled by other paths.
@@ -306,7 +306,7 @@ def is_moe(module: nn.Module) -> bool:
     # Auto-detect common MoE patterns
     if name.endswith("sparsemoeblock") or "moelayer" in name:
         return True
-    # Non-standard MoE block names are per-family data (modeling/families/*).
+    # Non-standard MoE block names are per-model data (modelopt/modeling/models/*).
     if match_moe_block(module) is not None:
         return True
     # Structural detection: modules with router + experts (e.g. Gemma4TextDecoderLayer)
@@ -982,8 +982,8 @@ def get_expert_linear_names(module: nn.Module) -> list[str]:
         if hasattr(module.experts, f"{first_proj_attr}_weight_quantizers"):
             return [first_proj_attr, "down_proj"]
 
-    # Resolve expert names from the model-family registry; fall back to the mapping
-    # below when no family spec matches the MoE block.
+    # Resolve expert names from the model spec registry (modelopt/modeling); fall back
+    # to the mapping below when no spec matches the MoE block.
     spec = match_moe_block(module)
     if spec is not None and spec.expert_linear_names is not None:
         return list(spec.expert_linear_names)

@@ -13,14 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Model-family export descriptors.
+"""Qwen2-MoE specs (HF model type ``qwen2_moe``)."""
 
-Holds per-model export data organized by model family. The export code resolves a
-``ModelSpec`` via the registry lookups and reads its fields; an unmatched lookup
-returns ``None`` so callers fall back to their default behavior.
-"""
+from ..base import ModelSpec
+from ..registry import register
 
-# Importing families registers every family spec as a side effect.
-from . import families
-from .base import *
-from .registry import *
+register(
+    ModelSpec(
+        name="qwen2_moe",
+        moe_block_names=("Qwen2MoeSparseMoeBlock",),
+        expert_linear_names=("gate_proj", "down_proj", "up_proj"),
+        has_iterable_experts=True,
+    )
+)

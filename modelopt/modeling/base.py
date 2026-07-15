@@ -13,11 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Per-model-family export descriptor.
+"""Per-model descriptor.
 
-A ``ModelSpec`` declares how one model family differs from the generic export path,
-so the export code can read these values instead of branching on model names. Each
-spec holds per-model data only, not export logic.
+A ``ModelSpec`` declares how one model type differs from the generic code path,
+so consumers (e.g. export) can read these values instead of branching on model
+names. Each spec holds per-model data only, no logic.
 """
 
 from dataclasses import dataclass
@@ -27,7 +27,7 @@ __all__ = ["ModelSpec"]
 
 @dataclass
 class ModelSpec:
-    """Per-model-family export data.
+    """Per-model data.
 
     A spec is resolved from a model sub-module via its matching keys and read for its
     per-model data fields. ``moe_block_names`` is the matching key: MoE block
@@ -36,7 +36,7 @@ class ModelSpec:
     """
 
     name: str
-    """Unique name of the model-family spec."""
+    """Unique spec name; the HF model type where one exists (e.g. ``"qwen3_moe"``)."""
 
     moe_block_names: tuple[str, ...] = ()
     """Matching key: MoE block class-name substrings (case-insensitive)."""
