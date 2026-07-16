@@ -24,7 +24,12 @@ from modelopt.modeling import (
     match_moe_block,
     weight_plus_one_norm_names,
 )
-from modelopt.torch.export.layer_utils import get_expert_linear_names, get_experts_list, is_moe
+from modelopt.torch.export.layer_utils import (
+    get_expert_linear_names,
+    get_experts_list,
+    is_moe,
+    sync_moe_gate_up_amax,
+)
 from modelopt.torch.export.quant_utils import _layernorm_uses_weight_plus_one
 
 
@@ -192,3 +197,51 @@ def test_layernorm_weight_plus_one_via_specs():
     assert not _layernorm_uses_weight_plus_one(PlainRMSNorm())
     # Structural fallback stays in the engine.
     assert _layernorm_uses_weight_plus_one(ZeroCentered())
+
+
+class _FakeQuantizer:
+    def __init__(self, amax):
+        self.amax = amax
+
+
+def _make_gated_block(block_cls, gate_name, up_name, gate_amax, up_amax):
+    import torch
+
+    class _Expert(nn.Module):
+        def __init__(self):
+            super().__init__()
+            setattr(self, gate_name, nn.Linear(4, 8))
+            setattr(self, up_name, nn.Linear(4, 8))
+            getattr(self, gate_name).weight_quantizer = _FakeQuantizer(torch.tensor(gate_amax))
+            getattr(self, up_name).weight_quantizer = _FakeQuantizer(torch.tensor(up_amax))
+
+    block = block_cls()
+    block.experts = nn.ModuleList([_Expert()])
+    return block
+
+
+def test_sync_moe_gate_up_amax_uses_own_spec():
+    import torch
+
+    class Qwen3MoeSparseMoeBlock(nn.Module):
+        pass
+
+    model = nn.Module()
+    model.moe = _make_gated_block(
+        Qwen3MoeSparseMoeBlock, "gate_proj", "up_proj", [1.0, 3.0], [2.0, 2.0]
+    )
+    assert sync_moe_gate_up_amax(model) == 1
+    expert = model.moe.experts[0]
+    assert torch.equal(expert.gate_proj.weight_quantizer.amax, torch.tensor([2.0, 3.0]))
+    assert torch.equal(expert.up_proj.weight_quantizer.amax, torch.tensor([2.0, 3.0]))
+
+
+def test_sync_moe_gate_up_amax_warns_on_unmatched_block():
+    class UnknownSparseMoeBlock(nn.Module):
+        """Passes is_moe by naming convention but has no MoESpec."""
+
+    model = nn.Module()
+    model.moe = _make_gated_block(UnknownSparseMoeBlock, "gate_proj", "up_proj", [1.0], [2.0])
+    # No spec -> no cross-model guessing: nothing synced, one warning.
+    with pytest.warns(UserWarning, match="no registered MoESpec"):
+        assert sync_moe_gate_up_amax(model) == 0

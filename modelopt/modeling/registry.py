@@ -86,11 +86,16 @@ def iter_pqs_fuse_rules():
 
 
 def iter_gate_up_pairs() -> Iterator[tuple[str, str]]:
-    """Yield the distinct (gate, up) expert-projection pairs across all MoE specs.
+    """Yield the distinct (gate, up) projection-name pairs across all MoE specs.
 
-    Deduplicated because consumers apply every pair opportunistically to every
-    iterable-experts module (getattr-guarded), matching the legacy engine behavior —
-    unknown models still benefit if their naming matches any registered pair.
+    GLOBAL-VOCABULARY semantics: consumers (currently only calibration sibling
+    grouping in ``quantization/model_calib.py``, which also walks dense MLPs that
+    no MoE spec can match) try every pair opportunistically on every module,
+    getattr-guarded. Adding a pair to any spec therefore changes behavior for ALL
+    models whose modules happen to carry those attribute names — prefer per-module
+    resolution (``match_moe_block(module).gate_up_pair``) wherever the module is an
+    identifiable MoE block. The dense-MLP case moves to a fusion-group topic spec
+    in a follow-up (see MODEL_SPECIFIC_REFACTOR.md P5).
     """
     seen = set()
     for spec in iter_specs(MoESpec):
