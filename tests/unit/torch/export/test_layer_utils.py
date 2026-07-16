@@ -101,7 +101,7 @@ class NemotronHMOE(nn.Module):
 
 
 def test_get_expert_linear_names_gemma4():
-    assert get_expert_linear_names(Gemma4TextDecoderLayer()) == [
+    assert get_expert_linear_names(Gemma4TextDecoderLayer(), {"gemma4"}) == [
         "gate_proj",
         "down_proj",
         "up_proj",
@@ -109,8 +109,8 @@ def test_get_expert_linear_names_gemma4():
 
 
 def test_get_expert_linear_names_mixtral():
-    assert get_expert_linear_names(MixtralSparseMoeBlock()) == ["w1", "w2", "w3"]
+    assert get_expert_linear_names(MixtralSparseMoeBlock(), {"mixtral"}) == ["w1", "w2", "w3"]
 
 
 def test_get_expert_linear_names_nemotron():
-    assert get_expert_linear_names(NemotronHMOE()) == ["up_proj", "down_proj"]
+    assert get_expert_linear_names(NemotronHMOE(), {"nemotron_h"}) == ["up_proj", "down_proj"]

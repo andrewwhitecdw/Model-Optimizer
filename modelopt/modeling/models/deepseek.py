@@ -20,7 +20,7 @@ classes.
 """
 
 from ..registry import register
-from ..specs import MoESpec
+from ..specs import MoESpec, MoEVariant
 
 # DeepseekMoE experts ARE structurally iterable (ModuleList of DeepseekMLP), but
 # has_iterable_experts stays False until the grouped export path (get_experts_list
@@ -29,8 +29,12 @@ from ..specs import MoESpec
 register(
     MoESpec(
         model_type="deepseek",
-        block_names=("DeepseekMoE",),
-        expert_linear_names=("gate_proj", "down_proj", "up_proj"),
-        gate_up_pair=("gate_proj", "up_proj"),
+        variants=(
+            MoEVariant(
+                block_names=("DeepseekMoE",),
+                expert_linear_names=("gate_proj", "down_proj", "up_proj"),
+                gate_up_pair=("gate_proj", "up_proj"),
+            ),
+        ),
     )
 )

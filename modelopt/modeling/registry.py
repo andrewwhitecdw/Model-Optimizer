@@ -26,17 +26,16 @@ here).
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, TypeVar
 
-from .specs import ExportSpec, ModelSpec, MoESpec, NormSpec
+from .specs import ExportSpec, ModelSpec, MoESpec, MoEVariant, NormSpec
 
 if TYPE_CHECKING:
     import torch.nn as nn
 
 __all__ = [
     "collect_model_types",
+    "get_specs",
     "iter_gate_up_pairs",
     "iter_pqs_fuse_rules",
-    "iter_specs",
-    "match_class_names",
     "match_moe_block",
     "register",
     "weight_plus_one_norm_names",
@@ -53,27 +52,20 @@ def register(spec: SpecT) -> SpecT:
     return spec
 
 
-def iter_specs(spec_cls: type[SpecT]) -> Iterator[SpecT]:
-    """Yield every registered spec of type ``spec_cls`` (in registration order)."""
-    for spec in _SPECS:
-        if isinstance(spec, spec_cls):
-            yield spec
+def get_specs(spec_cls: type[SpecT], model_types: set[str] | None = None) -> list[SpecT]:
+    """Return the registered specs of type ``spec_cls``, in registration order.
 
-
-def match_class_names(module, names: tuple[str, ...]) -> bool:
-    """Return True if any of ``names`` equals a class name in ``module``'s MRO.
-
-    Case-insensitive exact-name comparison against ``cls.__name__`` for every class
-    in ``type(module).__mro__`` — the same semantics as the export dispatch
-    registry's string keys (``modelopt.torch.export.registry``). Dynamically
-    generated quantized classes are subclasses of the original module class, so they
-    match through their base; exact-name comparison avoids substring false
-    positives. Comparison is case-insensitive because some registered names predate
-    this registry and their casing was never exercised by the legacy substring
-    matching.
+    This is the model_type index: with ``model_types`` (from
+    ``collect_model_types(model.config)``), only the specs belonging to the model's
+    own model types are returned, so consumers resolve per-model data without
+    scanning the registry. Without it, all specs of the type are returned
+    (aggregators, no-config compatibility).
     """
-    mro_names = {cls.__name__.lower() for cls in type(module).__mro__}
-    return any(name.lower() in mro_names for name in names)
+    return [
+        spec
+        for spec in _SPECS
+        if isinstance(spec, spec_cls) and (not model_types or spec.model_type in model_types)
+    ]
 
 
 def iter_pqs_fuse_rules():
@@ -82,7 +74,7 @@ def iter_pqs_fuse_rules():
     Aggregated across all registered export specs (the consumer matches each model
     module against the substrings, so the order across specs does not matter).
     """
-    for spec in iter_specs(ExportSpec):
+    for spec in get_specs(ExportSpec):
         yield from spec.pqs_fuse_rules
 
 
@@ -99,16 +91,17 @@ def iter_gate_up_pairs() -> Iterator[tuple[str, str]]:
     in a follow-up (see MODEL_SPECIFIC_REFACTOR.md P5).
     """
     seen = set()
-    for spec in iter_specs(MoESpec):
-        pair = spec.gate_up_pair
-        if pair is not None and pair not in seen:
-            seen.add(pair)
-            yield pair
+    for spec in get_specs(MoESpec):
+        for variant in spec.variants:
+            pair = variant.gate_up_pair
+            if pair is not None and pair not in seen:
+                seen.add(pair)
+                yield pair
 
 
 def weight_plus_one_norm_names() -> tuple[str, ...]:
     """All norm class names whose stored weight is ``w - 1``, across all norm specs."""
-    return tuple(name for spec in iter_specs(NormSpec) for name in spec.weight_plus_one_norm_names)
+    return tuple(name for spec in get_specs(NormSpec) for name in spec.weight_plus_one_norm_names)
 
 
 def collect_model_types(config) -> set[str]:
@@ -139,25 +132,23 @@ def collect_model_types(config) -> set[str]:
     return found
 
 
-def match_moe_block(module: "nn.Module", model_types: set[str] | None = None) -> MoESpec | None:
-    """Return the MoE spec whose ``block_names`` matches ``module``.
+def match_moe_block(module: "nn.Module", model_types: set[str] | None = None) -> MoEVariant | None:
+    """Return the MoE layout variant for ``module``, resolved by model type.
 
-    Identification is by case-insensitive exact-name match against the class names
-    in ``module``'s MRO (see ``match_class_names``); quantized wrapper classes match
-    through their original base class.
+    ``model_types`` (from ``collect_model_types(model.config)``: root plus
+    sub-config types, so VLM towers are covered) is a strict filter: only specs
+    registered under the model's own model types are considered. A model whose
+    model_type has no spec resolves to ``None`` even if its module class names
+    coincide with another model's — register a spec instead of inheriting a
+    neighbor's data. ``None`` or an empty set (no config available: unit tests,
+    the TRT-LLM path) searches all specs.
 
-    ``model_types`` (e.g. from ``collect_model_types(model.config)``) scopes the
-    result: when several specs' ``block_names`` match, one belonging to the model's
-    own model types wins. Scope prefers, never excludes — a class-name match outside
-    the scope still resolves, because remote-code towers reuse other models' module
-    classes under their own model_type (e.g. ``DeepseekMoE`` blocks inside a Kimi
-    model).
+    Within the scope, each spec's variant ``block_names`` identifies the block and
+    disambiguates same-model layout variants (``MoESpec.match_variant``); quantized
+    wrapper classes match through their original base class in the MRO.
     """
-    fallback = None
-    for spec in iter_specs(MoESpec):
-        if match_class_names(module, spec.block_names):
-            if model_types and spec.model_type in model_types:
-                return spec
-            if fallback is None:
-                fallback = spec
-    return fallback
+    for spec in get_specs(MoESpec, model_types):
+        variant = spec.match_variant(module)
+        if variant is not None:
+            return variant
+    return None

@@ -453,7 +453,7 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
             and ("awq" in quantization_format or quantization_format == QUANTIZATION_NVFP4_SVDQUANT)
         ):
             # update_experts_avg_prequant_scale(module)
-            grouped_experts = get_experts_list(module, model_type, model_types)
+            grouped_experts = get_experts_list(module, model_types)
             for modules in grouped_experts:
                 with fsdp2_aware_weight_update(model, modules):
                     preprocess_linear_fusion(modules, resmooth_only=True)

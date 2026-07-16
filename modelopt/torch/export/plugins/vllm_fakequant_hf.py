@@ -409,7 +409,6 @@ def _resmooth_experts_for_export(
 
     name_to_module = dict(model.named_modules()) if inplace else None
 
-    model_type = type(model).__name__.lower()
     model_types = collect_model_types(getattr(model, "config", None))
     id_to_name: dict[int, str] = {id(m): n for n, m in model.named_modules()}
     out: dict[str, tuple[torch.Tensor, torch.Tensor | None]] = {}
@@ -471,7 +470,7 @@ def _resmooth_experts_for_export(
         if not is_moe(module, model_types):
             continue
         try:
-            expert_groups = get_experts_list(module, model_type, model_types)
+            expert_groups = get_experts_list(module, model_types)
         except NotImplementedError:
             continue
         for experts in expert_groups:

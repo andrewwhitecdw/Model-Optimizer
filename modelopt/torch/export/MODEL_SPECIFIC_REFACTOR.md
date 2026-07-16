@@ -52,10 +52,10 @@ Two layers:
 
 ```text
 modelopt/modeling/
-  specs.py       # ModelSpec (base) + topic specs (MoESpec: shared architecture
-                 # facts) + subsystem specs (ExportSpec: HF-export-path policy);
-                 # future attention/norm topic specs and quantization/spec-dec
-                 # subsystem specs go here too
+  specs.py       # ModelSpec (base) + topic specs (MoESpec/NormSpec: shared
+                 # architecture facts; MoESpec nests one MoEVariant per concrete
+                 # block layout) + subsystem specs (ExportSpec: HF-export-path
+                 # policy); future topic/subsystem specs go here too
   registry.py    # register() + lookups queried by spec type (None when unmatched)
                  # + the MRO exact-name matching core (match_class_names)
   __init__.py    # re-exports; importing it registers all specs
@@ -69,14 +69,20 @@ Model type names mirror
 (e.g. `qwen3_moe.py`, `gpt_oss.py`, `nemotron_h.py`); trust-remote-code models
 (`arctic`, `deepseek`) use their config `model_type`.
 
-Resolution is two-level, mirroring HF's own indexing: the engine collects the
-model's HF model types once per export (`collect_model_types(model.config)` — root
-plus sub-configs, so VLM towers contribute e.g. `kimi_k2` explicitly) and passes
-them down; `match_moe_block(module, model_types)` identifies the block by class
-name in the module's MRO and uses the scope to pick the model's own spec when
-class names collide across models. Scope prefers, never excludes: a tower whose
-model_type has no spec still resolves by class name (remote-code forks reuse other
-models' module classes).
+Resolution is by model type first, mirroring HF's own indexing: the engine
+collects the model's HF model types once per export
+(`collect_model_types(model.config)` — root plus sub-configs, so VLM towers
+contribute e.g. `kimi_k2` explicitly) and passes them down. The scope is strict:
+only the model's own specs are consulted, so a model whose model_type has no spec
+fails loudly (register a spec) instead of inheriting a neighbor's data through a
+coincidental class-name match. Within the scope, each `MoESpec` nests one
+`MoEVariant` per concrete block layout — several when the same checkpoint
+materializes with different classes and projection names (Mixtral across
+transformers generations); variant `block_names` (matched against the module
+MRO) identify MoE blocks (`is_moe`) and pick the variant.
+`get_expert_linear_names` doesn't need the block class at all when a model's
+variants agree on one naming. Without a scope (no config available: unit tests,
+the TRT-LLM path), lookups search all specs by class name.
 
 During migration, call sites kept the legacy branches as a fallback behind the
 spec lookup. Once the specs covered every family the legacy chains served, the

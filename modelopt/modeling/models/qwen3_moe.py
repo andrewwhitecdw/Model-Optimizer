@@ -16,15 +16,19 @@
 """Qwen3-MoE specs (HF model type ``qwen3_moe``)."""
 
 from ..registry import register
-from ..specs import ExportSpec, MoESpec
+from ..specs import ExportSpec, MoESpec, MoEVariant
 
 register(
     MoESpec(
         model_type="qwen3_moe",
-        block_names=("Qwen3MoeSparseMoeBlock",),
-        expert_linear_names=("gate_proj", "down_proj", "up_proj"),
-        gate_up_pair=("gate_proj", "up_proj"),
-        has_iterable_experts=True,
+        variants=(
+            MoEVariant(
+                block_names=("Qwen3MoeSparseMoeBlock",),
+                expert_linear_names=("gate_proj", "down_proj", "up_proj"),
+                gate_up_pair=("gate_proj", "up_proj"),
+                has_iterable_experts=True,
+            ),
+        ),
     )
 )
 

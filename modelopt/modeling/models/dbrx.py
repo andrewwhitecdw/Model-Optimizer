@@ -16,15 +16,7 @@
 """DBRX specs (HF model type ``dbrx``)."""
 
 from ..registry import register
-from ..specs import MoESpec
-
-register(
-    MoESpec(
-        model_type="dbrx",
-        block_names=("DBRXMoeSparseMoeBlock",),
-        expert_linear_names=("w1_linear", "w2_linear", "v1_linear"),
-    )
-)
+from ..specs import MoESpec, MoEVariant
 
 # HF DbrxFFN (non-standard block name, identified for is_moe). Expert names refer to
 # the quantized layout: _QuantDbrxExpertGLU converts the fused w1/v1/w2 parameters
@@ -34,7 +26,11 @@ register(
 register(
     MoESpec(
         model_type="dbrx",
-        block_names=("DbrxFFN",),
-        expert_linear_names=("w1_linear", "w2_linear", "v1_linear"),
+        variants=(
+            MoEVariant(
+                block_names=("DbrxFFN",),
+                expert_linear_names=("w1_linear", "w2_linear", "v1_linear"),
+            ),
+        ),
     )
 )

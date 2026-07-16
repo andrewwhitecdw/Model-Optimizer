@@ -16,13 +16,17 @@
 """GPT-OSS specs (HF model type ``gpt_oss``)."""
 
 from ..registry import register
-from ..specs import MoESpec
+from ..specs import MoESpec, MoEVariant
 
 register(
     MoESpec(
         model_type="gpt_oss",
-        # GPT-OSS fuses gate and up into a single gate_up_proj.
-        block_names=("GptOssMoE",),
-        expert_linear_names=("gate_up_proj", "down_proj"),
+        variants=(
+            MoEVariant(
+                # GPT-OSS fuses gate and up into a single gate_up_proj.
+                block_names=("GptOssMoE",),
+                expert_linear_names=("gate_up_proj", "down_proj"),
+            ),
+        ),
     )
 )

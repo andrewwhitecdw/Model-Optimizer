@@ -23,12 +23,13 @@ read values instead of branching on model names:
 - **subsystem specs** hold one subsystem's per-model policy (``ExportSpec``;
   quantization / speculative-decoding specs to follow).
 
-Specs hold per-model data only, no logic.
+Specs hold per-model data plus trivial accessors over that data; subsystem logic
+never lives here.
 """
 
 from dataclasses import dataclass
 
-__all__ = ["ExportSpec", "MoESpec", "ModelSpec", "NormSpec"]
+__all__ = ["ExportSpec", "MoESpec", "MoEVariant", "ModelSpec", "NormSpec", "match_class_names"]
 
 
 @dataclass
@@ -41,27 +42,38 @@ class ModelSpec:
 
     model_type: str
     """The HF model type this spec belongs to (``config.model_type``, e.g.
-    ``"qwen3_moe"``). Not necessarily unique: a model type may register several specs
-    for different module layouts (e.g. two ``mixtral`` MoE-block variants)."""
+    ``"qwen3_moe"``). A model registers one spec instance per spec kind; same-model
+    layout variants nest inside the spec (see ``MoESpec.variants``)."""
+
+
+def match_class_names(module, names: tuple[str, ...]) -> bool:
+    """Return True if any of ``names`` equals a class name in ``module``'s MRO.
+
+    Case-insensitive exact-name comparison against ``cls.__name__`` for every class
+    in ``type(module).__mro__`` — the same semantics as the export dispatch
+    registry's string keys (``modelopt.torch.export.registry``). Dynamically
+    generated quantized classes are subclasses of the original module class, so they
+    match through their base; exact-name comparison avoids substring false
+    positives. Comparison is case-insensitive because some registered names predate
+    this registry and their casing was never exercised by the legacy substring
+    matching.
+    """
+    mro_names = {cls.__name__.lower() for cls in type(module).__mro__}
+    return any(name.lower() in mro_names for name in names)
 
 
 @dataclass
-class MoESpec(ModelSpec):
-    """MoE architecture facts for one model (or one of its MoE-block variants).
+class MoEVariant:
+    """One concrete MoE-block layout of a model.
 
-    Unlike the subsystem specs, this describes what a model's MoE blocks *are* —
-    which class, what the expert projections are called — so any modelopt subsystem
-    (export, quantization, speculative decoding, ...) can read it instead of keeping
-    its own per-model MoE table.
-
-    Resolved from a model sub-module via ``block_names``, the matching key: MoE block
-    class names (e.g. ``"Qwen3MoeSparseMoeBlock"``) compared case-insensitively
-    against the class names in the module's MRO (see ``registry.match_class_names``).
+    A model type usually has exactly one; it has several when the same checkpoint
+    materializes with different module classes and projection names (e.g. Mixtral
+    across transformers generations). ``block_names`` tells the variants apart.
     """
 
     block_names: tuple[str, ...] = ()
     """Matching key: MoE block class names, matched against the module's MRO
-    (case-insensitive exact names, not substrings)."""
+    (case-insensitive exact names, not substrings; see ``match_class_names``)."""
 
     expert_linear_names: tuple[str, ...] | None = None
     """Expert linear projection names, e.g. ``("gate_proj", "down_proj", "up_proj")``.
@@ -81,6 +93,45 @@ class MoESpec(ModelSpec):
     ``("w1", "w3")``. ``None`` for non-gated experts (NemotronH) and already-fused
     layouts (GptOss, DBRX). Consumed by amax syncing before quantized export (see
     ``sync_moe_gate_up_amax``) and by calibration grouping."""
+
+
+@dataclass
+class MoESpec(ModelSpec):
+    """MoE architecture facts for one model: its MoE-block layout variant(s).
+
+    Unlike the subsystem specs, this describes what a model's MoE blocks *are* —
+    which class, what the expert projections are called — so any modelopt subsystem
+    (export, quantization, speculative decoding, ...) can read it instead of keeping
+    its own per-model MoE table.
+    """
+
+    variants: tuple[MoEVariant, ...] = ()
+    """The model's MoE-block layouts; more than one when the same checkpoint
+    materializes differently (see ``MoEVariant``)."""
+
+    def match_variant(self, module) -> MoEVariant | None:
+        """Return the variant whose ``block_names`` matches ``module``, else None."""
+        for variant in self.variants:
+            if match_class_names(module, variant.block_names):
+                return variant
+        return None
+
+    def expert_linear_names_for(self, module) -> tuple[str, ...] | None:
+        """Resolve ``module``'s expert linear names within this model.
+
+        When every variant agrees on one naming, the module's class is irrelevant
+        (a spec can provide naming without the block class being known); with
+        several namings, the module's class picks the variant.
+        """
+        namings = {
+            variant.expert_linear_names
+            for variant in self.variants
+            if variant.expert_linear_names is not None
+        }
+        if len(namings) == 1:
+            return next(iter(namings))
+        variant = self.match_variant(module)
+        return variant.expert_linear_names if variant is not None else None
 
 
 @dataclass
