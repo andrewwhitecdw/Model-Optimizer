@@ -56,9 +56,25 @@ def test_match_moe_block_unmatched_returns_none():
     assert match_moe_block(_UnknownMoeBlock()) is None
 
 
-def test_get_expert_linear_names_falls_back_when_unmatched():
-    # No spec matches — the legacy default (w1/w2/w3) must be preserved.
-    assert get_expert_linear_names(_UnknownMoeBlock()) == ["w1", "w2", "w3"]
+def test_get_expert_linear_names_raises_when_unmatched():
+    # No spec matches and no fused-expert structure — must fail loudly instead of
+    # guessing another model's naming (the legacy w1/w2/w3 default was removed).
+    with pytest.raises(NotImplementedError, match="expert linear names"):
+        get_expert_linear_names(_UnknownMoeBlock())
+
+
+def test_get_expert_linear_names_from_specs():
+    class ArcticMoE(nn.Module):
+        pass
+
+    class DbrxFFN(nn.Module):
+        pass
+
+    # Arctic keeps the w1/w2/w3 naming it previously got from the engine default.
+    assert get_expert_linear_names(ArcticMoE()) == ["w1", "w2", "w3"]
+    # DbrxFFN resolves the quantized per-expert ModuleList names (previously it fell
+    # through to the w1/w2/w3 default, which never existed on the quantized module).
+    assert get_expert_linear_names(DbrxFFN()) == ["w1_linear", "w2_linear", "v1_linear"]
 
 
 class NemotronHMOE(nn.Module):

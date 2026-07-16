@@ -94,14 +94,14 @@ def get_experts_list(
     """
     experts_list = []
 
-    # Expert linear names are per-model data (modelopt/modeling/models/*). The grouped export
-    # path only supports families whose experts are iterable per-expert sub-modules
-    # (Mixtral, Qwen MoE, NemotronH, Gemma4); stacked/fused layouts (DBRX, GptOss, ...)
-    # raise NotImplementedError here and are handled by other paths.
+    # The grouped export path only supports layouts whose experts are iterable
+    # per-expert sub-modules (spec.has_iterable_experts); stacked/fused layouts
+    # (DBRX, GptOss, ...) raise NotImplementedError here and are handled by other
+    # paths. Name resolution itself is shared with get_expert_linear_names.
     spec = match_moe_block(module)
-    if spec is None or not spec.has_iterable_experts or spec.expert_linear_names is None:
+    if spec is None or not spec.has_iterable_experts:
         raise NotImplementedError(f" {model_type} not supported")
-    linear_names = list(spec.expert_linear_names)
+    linear_names = get_expert_linear_names(module)
 
     # Common logic for all supported model types
     experts_list.extend(
@@ -964,16 +964,13 @@ def _build_stacked_linear(experts: nn.Module, module_name, linear_type, num_expe
 
 
 def get_expert_linear_names(module: nn.Module) -> list[str]:
-    """Get the list of linear names for the experts."""
+    """Get the list of linear names for the experts.
 
-    def module_match_name_list(module, name_list):
-        """Check if the module name matches any of the names in the list.
-
-        e.g. module_match_name_list(QuantQwen3MoeSparseMoeBlock, ['Qwen3MoeSparseMoeBlock']) -> True
-
-        """
-        return any(name.lower() in type(module).__name__.lower() for name in name_list)
-
+    Resolution order: structural detection of fused-expert layouts first, then the
+    model spec registry (modelopt/modeling). Raises NotImplementedError when neither
+    resolves, so a new MoE model fails loudly instead of silently inheriting another
+    model's naming.
+    """
     # Structural detection: after _export_fused_experts, fused expert modules
     # have per-expert submodules with gate_proj/up_proj/down_proj.
     # Also handles models that originally used this naming (Qwen, DeepSeek, etc.).
@@ -982,44 +979,15 @@ def get_expert_linear_names(module: nn.Module) -> list[str]:
         if hasattr(module.experts, f"{first_proj_attr}_weight_quantizers"):
             return [first_proj_attr, "down_proj"]
 
-    # Resolve expert names from the model spec registry (modelopt/modeling); fall back
-    # to the mapping below when no spec matches the MoE block.
     spec = match_moe_block(module)
     if spec is not None and spec.expert_linear_names is not None:
         return list(spec.expert_linear_names)
 
-    if module_match_name_list(
-        module,
-        [
-            "Qwen2MoeSparseMoeBlock",
-            "Qwen3MoeSparseMoeBlock",
-            "Qwen3NextSparseMoeBlock",
-            "Qwen3_5MoeSparseMoeBlock",
-            "DeepseekMoE",
-        ],
-    ):
-        return ["gate_proj", "down_proj", "up_proj"]
-    elif module_match_name_list(module, ["MixtralSparseMoeBlock"]):
-        # Old-style Mixtral (iterable experts) uses w1/w2/w3.
-        # Fused Mixtral (transformers 5.0+) is already handled by the
-        # structural first-projection quantizer check above.
-        return ["w1", "w2", "w3"]
-    elif module_match_name_list(module, ["MixtralMoeSparseMoeBlock"]):
-        # Older transformers naming for Mixtral
-        return ["linear_fc1", "linear_fc2"]
-    elif module_match_name_list(module, ["DBRXMoeSparseMoeBlock"]):
-        return ["w1_linear", "w2_linear", "v1_linear"]
-    elif module_match_name_list(module, ["GptOssMoE"]):
-        return ["gate_up_proj", "down_proj"]
-    elif module_match_name_list(module, ["NemotronHMOE"]):
-        # NemotronHMOE experts (NemotronHMLP) use up_proj and down_proj only (no gate).
-        return ["up_proj", "down_proj"]
-    elif module_match_name_list(module, ["Gemma4TextDecoderLayer"]):
-        # Gemma4 MoE experts are unfused into per-expert nn.Linear layers
-        return ["gate_proj", "down_proj", "up_proj"]
-    else:
-        # assuming w1, w2, w3 by default
-        return ["w1", "w2", "w3"]
+    raise NotImplementedError(
+        f"Cannot resolve expert linear names for MoE block {type(module).__name__!r}. "
+        "Register an ExportSpec with expert_linear_names for this model under "
+        "modelopt/modeling/models/."
+    )
 
 
 def set_expert_quantizer_amax(

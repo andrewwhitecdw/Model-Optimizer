@@ -26,11 +26,15 @@ register(
     )
 )
 
-# HF DbrxFFN: MoE-block identification only (non-standard block name for is_moe);
-# expert naming intentionally unset so expert-name lookups keep the engine default.
+# HF DbrxFFN (non-standard block name, identified for is_moe). Expert names refer to
+# the quantized layout: _QuantDbrxExpertGLU converts the fused w1/v1/w2 parameters
+# into per-expert w1_linear/v1_linear/w2_linear ModuleLists on experts.mlp (see
+# modelopt/torch/quantization/plugins/huggingface.py), which is what the DBRX
+# prepare handler fills amax values on.
 register(
     ExportSpec(
         model_type="dbrx",
         moe_block_names=("DbrxFFN",),
+        expert_linear_names=("w1_linear", "w2_linear", "v1_linear"),
     )
 )

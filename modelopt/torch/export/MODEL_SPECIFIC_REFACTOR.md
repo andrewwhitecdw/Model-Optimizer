@@ -64,15 +64,15 @@ Model type names mirror
 (e.g. `qwen3_moe.py`, `gpt_oss.py`, `nemotron_h.py`); trust-remote-code models
 (`arctic`, `deepseek`) use their config `model_type`.
 
-Call sites follow a fallback-first shape, which keeps migration incremental and
-behavior-preserving — a model not in the registry behaves exactly as before:
-
-```python
-spec = match_moe_block(module)
-if spec is not None and spec.expert_linear_names is not None:
-    return list(spec.expert_linear_names)
-# ... legacy branch preserved as fallback ...
-```
+During migration, call sites kept the legacy branches as a fallback behind the
+spec lookup. Once the specs covered every family the legacy chains served, the
+chains — and the silent ``w1/w2/w3`` guess for unknown models — were deleted:
+expert-name resolution is now *structural detection -> spec -> raise*, so a new
+MoE model fails loudly, asking for a spec, instead of inheriting another model's
+naming. Generic detection that is not per-model data (the ``*SparseMoeBlock`` /
+``*MoeLayer`` conventions and the router+experts structural check in ``is_moe``,
+the fused-experts quantizer probe in ``get_expert_linear_names``) stays in the
+engine, ahead of or beside the spec lookup.
 
 Note on naming: `modelopt/modeling/registry.py` (per-model **data**, "what are
 this model's values") is distinct from the export-path `registry.py` from PR #1939
@@ -92,5 +92,6 @@ against existing export tests.
 | **P4** | HF handlers consume specs directly; fold remaining `moe_utils` naming data into specs; share the matcher machinery with the export dispatch registry (#1939). | planned |
 | **OUT** | TRT-LLM path branches (`decoder_type` chains in `build_*`, `model_config_export.py`, `tensorrt_llm_utils.py`): frozen, moved out unchanged on a separate track. Dead code found during inventory (`MODEL_NAME_TO_TYPE`, `get_model_type`, `adjust_attn_amax_values`, `update_experts_avg_prequant_scale`) is deleted on that track too. | separate track |
 
-**Guardrails:** fallback-first; one data category per PR; the engine keeps the
+**Guardrails:** one data category per PR (fallback-first while a category is
+partially migrated, explicit-error once specs cover it); the engine keeps the
 algorithms — model specs supply values only, never fork functions.

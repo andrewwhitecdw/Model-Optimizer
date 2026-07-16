@@ -18,11 +18,13 @@
 from ..export import ExportSpec
 from ..registry import register
 
-# MoE-block identification only (non-standard block name for is_moe); expert naming
-# intentionally unset so expert-name lookups keep the engine default.
 register(
     ExportSpec(
         model_type="arctic",
+        # Non-standard block name (for is_moe identification).
         moe_block_names=("ArcticMoE",),
+        # ArcticMLP experts use Mixtral-style w1/w2/w3 naming (previously served by
+        # the engine's implicit w1/w2/w3 default, now declared explicitly).
+        expert_linear_names=("w1", "w2", "w3"),
     )
 )
