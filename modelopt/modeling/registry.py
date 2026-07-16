@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     import torch.nn as nn
 
 __all__ = [
+    "collect_model_types",
     "iter_gate_up_pairs",
     "iter_pqs_fuse_rules",
     "iter_specs",
@@ -110,14 +111,53 @@ def weight_plus_one_norm_names() -> tuple[str, ...]:
     return tuple(name for spec in iter_specs(NormSpec) for name in spec.weight_plus_one_norm_names)
 
 
-def match_moe_block(module: "nn.Module") -> MoESpec | None:
+def collect_model_types(config) -> set[str]:
+    """Collect every HF model type in a config tree (root plus nested sub-configs).
+
+    Walks attribute values duck-typed as configs (anything exposing a string
+    ``model_type``), so composite models contribute their tower types too — e.g. a
+    VLM yields ``{"kimi_vl", "kimi_k2"}`` via ``config.text_config`` — without this
+    package importing transformers. Pass ``model.config``; ``None`` yields an empty
+    set.
+    """
+    found: set[str] = set()
+    seen: set[int] = set()
+
+    def _walk(cfg) -> None:
+        if id(cfg) in seen:
+            return
+        seen.add(id(cfg))
+        model_type = getattr(cfg, "model_type", None)
+        if isinstance(model_type, str) and model_type:
+            found.add(model_type)
+        for value in vars(cfg).values():
+            if isinstance(getattr(value, "model_type", None), str):
+                _walk(value)
+
+    if config is not None:
+        _walk(config)
+    return found
+
+
+def match_moe_block(module: "nn.Module", model_types: set[str] | None = None) -> MoESpec | None:
     """Return the MoE spec whose ``block_names`` matches ``module``.
 
-    Case-insensitive exact-name match against the class names in ``module``'s MRO
-    (see ``match_class_names``); quantized wrapper classes match through their
-    original base class.
+    Identification is by case-insensitive exact-name match against the class names
+    in ``module``'s MRO (see ``match_class_names``); quantized wrapper classes match
+    through their original base class.
+
+    ``model_types`` (e.g. from ``collect_model_types(model.config)``) scopes the
+    result: when several specs' ``block_names`` match, one belonging to the model's
+    own model types wins. Scope prefers, never excludes — a class-name match outside
+    the scope still resolves, because remote-code towers reuse other models' module
+    classes under their own model_type (e.g. ``DeepseekMoE`` blocks inside a Kimi
+    model).
     """
+    fallback = None
     for spec in iter_specs(MoESpec):
         if match_class_names(module, spec.block_names):
-            return spec
-    return None
+            if model_types and spec.model_type in model_types:
+                return spec
+            if fallback is None:
+                fallback = spec
+    return fallback

@@ -19,11 +19,14 @@ import pytest
 import torch.nn as nn
 
 from modelopt.modeling import (
+    MoESpec,
+    collect_model_types,
     iter_gate_up_pairs,
     iter_pqs_fuse_rules,
     match_moe_block,
     weight_plus_one_norm_names,
 )
+from modelopt.modeling.registry import _SPECS
 from modelopt.torch.export.layer_utils import (
     get_expert_linear_names,
     get_experts_list,
@@ -245,3 +248,44 @@ def test_sync_moe_gate_up_amax_warns_on_unmatched_block():
     # No spec -> no cross-model guessing: nothing synced, one warning.
     with pytest.warns(UserWarning, match="no registered MoESpec"):
         assert sync_moe_gate_up_amax(model) == 0
+
+
+def test_collect_model_types_walks_sub_configs():
+    from types import SimpleNamespace
+
+    text_config = SimpleNamespace(model_type="kimi_k2")
+    config = SimpleNamespace(model_type="kimi_vl", text_config=text_config, hidden_size=4096)
+    assert collect_model_types(config) == {"kimi_vl", "kimi_k2"}
+    assert collect_model_types(None) == set()
+
+
+def test_match_moe_block_scope_prefers_own_model_type():
+    class Qwen3MoeSparseMoeBlock(nn.Module):
+        pass
+
+    # A hypothetical remote-code fork registering the same block class name under
+    # its own model type: scope must pick the model's own spec among candidates.
+    fork_spec = MoESpec(
+        model_type="zz_fork",
+        block_names=("Qwen3MoeSparseMoeBlock",),
+        expert_linear_names=("a_proj", "b_proj"),
+    )
+    _SPECS.append(fork_spec)
+    try:
+        assert match_moe_block(Qwen3MoeSparseMoeBlock(), {"zz_fork"}) is fork_spec
+        assert match_moe_block(Qwen3MoeSparseMoeBlock(), {"qwen3_moe"}).model_type == "qwen3_moe"
+        # No scope -> first registered class-name match wins (legacy order).
+        assert match_moe_block(Qwen3MoeSparseMoeBlock()).model_type == "qwen3_moe"
+    finally:
+        _SPECS.remove(fork_spec)
+
+
+def test_match_moe_block_scope_never_excludes():
+    class Qwen3MoeSparseMoeBlock(nn.Module):
+        pass
+
+    # A tower whose model_type has no spec of its own must still resolve by class
+    # name (e.g. DeepseekMoE blocks inside a Kimi model).
+    spec = match_moe_block(Qwen3MoeSparseMoeBlock(), {"some_unknown_vlm"})
+    assert spec is not None
+    assert spec.model_type == "qwen3_moe"

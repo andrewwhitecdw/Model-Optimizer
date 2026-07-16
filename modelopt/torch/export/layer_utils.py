@@ -28,7 +28,7 @@ try:
 except Exception:
     warn("Cannot find transformers package. Hugginface modules cannot be exported.")
 
-from modelopt.modeling import match_moe_block
+from modelopt.modeling import collect_model_types, match_moe_block
 from modelopt.torch.utils import distributed as dist
 from modelopt.torch.utils import import_plugin
 
@@ -85,12 +85,15 @@ with import_plugin("megatron", verbose=False):
 def get_experts_list(
     module: torch.nn.Module,
     model_type: str,
+    model_types: set[str] | None = None,
 ):
     """Returns list of grouped experts by linear name for given module.
 
     Args:
         module: MoE block (e.g. MixtralSparseMoeBlock, NemotronHMOE).
-        model_type: `type(root_model).__name__.lower()` (may change after ModelOpt quantize).
+        model_type: `type(root_model).__name__.lower()`, used in error messages only.
+        model_types: the model's HF model types (``collect_model_types(model.config)``)
+            used to scope spec resolution; ``None`` matches across all specs.
     """
     experts_list = []
 
@@ -98,10 +101,10 @@ def get_experts_list(
     # per-expert sub-modules (spec.has_iterable_experts); stacked/fused layouts
     # (DBRX, GptOss, ...) raise NotImplementedError here and are handled by other
     # paths. Name resolution itself is shared with get_expert_linear_names.
-    spec = match_moe_block(module)
+    spec = match_moe_block(module, model_types)
     if spec is None or not spec.has_iterable_experts:
         raise NotImplementedError(f" {model_type} not supported")
-    linear_names = get_expert_linear_names(module)
+    linear_names = get_expert_linear_names(module, model_types)
 
     # Common logic for all supported model types
     experts_list.extend(
@@ -300,14 +303,18 @@ def is_mlp(module: nn.Module) -> bool:
     return any(key in type(module).__name__.upper() for key in ("MLP", "T5DENSE"))
 
 
-def is_moe(module: nn.Module) -> bool:
-    """Returns whether the module is an MOE layer."""
+def is_moe(module: nn.Module, model_types: set[str] | None = None) -> bool:
+    """Returns whether the module is an MOE layer.
+
+    ``model_types`` (``collect_model_types(model.config)``) scopes the spec lookup;
+    identification itself is unaffected by it (scope prefers, never excludes).
+    """
     name = type(module).__name__.lower()
     # Auto-detect common MoE patterns
     if name.endswith("sparsemoeblock") or "moelayer" in name:
         return True
     # Non-standard MoE block names are per-model data (modelopt/modeling/models/*).
-    if match_moe_block(module) is not None:
+    if match_moe_block(module, model_types) is not None:
         return True
     # Structural detection: modules with router + experts (e.g. Gemma4TextDecoderLayer)
     return (
@@ -963,7 +970,7 @@ def _build_stacked_linear(experts: nn.Module, module_name, linear_type, num_expe
     return config
 
 
-def get_expert_linear_names(module: nn.Module) -> list[str]:
+def get_expert_linear_names(module: nn.Module, model_types: set[str] | None = None) -> list[str]:
     """Get the list of linear names for the experts.
 
     Resolution order: structural detection of fused-expert layouts first, then the
@@ -979,7 +986,7 @@ def get_expert_linear_names(module: nn.Module) -> list[str]:
         if hasattr(module.experts, f"{first_proj_attr}_weight_quantizers"):
             return [first_proj_attr, "down_proj"]
 
-    spec = match_moe_block(module)
+    spec = match_moe_block(module, model_types)
     if spec is not None and spec.expert_linear_names is not None:
         return list(spec.expert_linear_names)
 
@@ -1171,6 +1178,7 @@ def sync_moe_gate_up_amax(model: nn.Module) -> int:
     Returns:
         Number of expert gate/up pairs whose amaxes were synced.
     """
+    model_types = collect_model_types(getattr(model, "config", None))
     synced = 0
     unmatched_block_names: set[str] = set()
     for _, sub_module in model.named_modules():
@@ -1182,7 +1190,7 @@ def sync_moe_gate_up_amax(model: nn.Module) -> int:
         # cross-model guessing. A spec declaring no pair (non-gated NemotronH,
         # fused GptOss/DBRX) needs no sync; an unmatched block is warned about
         # once instead of silently skipped.
-        spec = match_moe_block(sub_module)
+        spec = match_moe_block(sub_module, model_types)
         if spec is None:
             unmatched_block_names.add(type(sub_module).__name__)
             continue

@@ -69,6 +69,15 @@ Model type names mirror
 (e.g. `qwen3_moe.py`, `gpt_oss.py`, `nemotron_h.py`); trust-remote-code models
 (`arctic`, `deepseek`) use their config `model_type`.
 
+Resolution is two-level, mirroring HF's own indexing: the engine collects the
+model's HF model types once per export (`collect_model_types(model.config)` — root
+plus sub-configs, so VLM towers contribute e.g. `kimi_k2` explicitly) and passes
+them down; `match_moe_block(module, model_types)` identifies the block by class
+name in the module's MRO and uses the scope to pick the model's own spec when
+class names collide across models. Scope prefers, never excludes: a tower whose
+model_type has no spec still resolves by class name (remote-code forks reuse other
+models' module classes).
+
 During migration, call sites kept the legacy branches as a fallback behind the
 spec lookup. Once the specs covered every family the legacy chains served, the
 chains — and the silent ``w1/w2/w3`` guess for unknown models — were deleted:
@@ -94,7 +103,7 @@ against existing export tests.
 | **P1** | Registry skeleton + MoE expert naming: `get_expert_linear_names` and `get_experts_list` read `spec.expert_linear_names` / `spec.has_iterable_experts`. The #1 "add a MoE model" shotgun-surgery driver. | this PR |
 | **P2** | `PQS_FUSE_MODULE_MAPPING` → `spec.pqs_fuse_rules`, aggregated via `iter_pqs_fuse_rules` (llama/qwen3 specs). | this PR |
 | **P3** | `is_moe` explicit class-name list → `spec.moe_block_names` (arctic/dbrx_ffn are identification-only specs: no expert naming, so expert-name lookups keep the engine default). The generic `*SparseMoeBlock`/`*MoeLayer` conventions and the structural router+experts check stay in the engine. | this PR |
-| **P4** | HF handlers consume specs directly; fold remaining `moe_utils` naming data into specs; share the matcher machinery with the export dispatch registry (#1939). | planned |
+| **P4** | HF handlers consume specs directly; fold remaining `moe_utils` naming data into specs; share the matcher machinery with the export dispatch registry (#1939). Model_type-scoped resolution (`collect_model_types` + scoped `match_moe_block`, threaded via `ExportContext.model_types`) is already in place from this PR. | planned |
 | **P5** | Cross-subsystem pilot: unify the remaining copies of linear-fusion-group knowledge (see §4) into spec fields. Partially done: `_GATE_UP_PAIRS` became `MoESpec.gate_up_pair` and `model_calib.py`'s private import of it is gone — the first quantization consumer of `modelopt.modeling`. Remaining: `shared_input.SHARED_PATTERNS`, `algorithms.quant_grouping_rules`. | in progress |
 | **P6** | Migrate remaining quantization-side data: default disabled-quantizer patterns, on-the-fly conversion gates, AutoQuantize grouping rules (see §4). | planned |
 | **OUT** | TRT-LLM path branches (`decoder_type` chains in `build_*`, `model_config_export.py`, `tensorrt_llm_utils.py`): frozen, moved out unchanged on a separate track. Candidates for deletion on that track: `adjust_attn_amax_values`, `update_experts_avg_prequant_scale` (unused). NOTE: `MODEL_NAME_TO_TYPE` / `get_model_type` are NOT dead — `examples/hf_ptq/hf_ptq.py` and `multinode_ptq.py` still call them; migrate the examples before removing. | separate track |

@@ -54,6 +54,9 @@ class ExportContext:
     model: nn.Module
     dtype: torch.dtype
     is_modelopt_qlora: bool = False
+    model_types: set[str] | None = None
+    """The model's HF model types (root + sub-configs, via ``collect_model_types``),
+    used to scope per-model spec resolution in ``modelopt.modeling``."""
     tied_cache: dict[int, nn.Module] = field(default_factory=dict)
     moe_tied_cache: dict[tuple[int, int], nn.Module] = field(default_factory=dict)
 
