@@ -15,13 +15,13 @@
 
 """DBRX specs (HF model type ``dbrx``)."""
 
-from ..export import ExportSpec
+from ..moe import MoESpec
 from ..registry import register
 
 register(
-    ExportSpec(
+    MoESpec(
         model_type="dbrx",
-        moe_block_names=("DBRXMoeSparseMoeBlock",),
+        block_names=("DBRXMoeSparseMoeBlock",),
         expert_linear_names=("w1_linear", "w2_linear", "v1_linear"),
     )
 )
@@ -32,9 +32,9 @@ register(
 # modelopt/torch/quantization/plugins/huggingface.py), which is what the DBRX
 # prepare handler fills amax values on.
 register(
-    ExportSpec(
+    MoESpec(
         model_type="dbrx",
-        moe_block_names=("DbrxFFN",),
+        block_names=("DbrxFFN",),
         expert_linear_names=("w1_linear", "w2_linear", "v1_linear"),
     )
 )

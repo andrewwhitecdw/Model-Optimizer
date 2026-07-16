@@ -15,14 +15,14 @@
 
 """Gemma4 specs (HF model type ``gemma4``)."""
 
-from ..export import ExportSpec
+from ..moe import MoESpec
 from ..registry import register
 
 register(
-    ExportSpec(
+    MoESpec(
         model_type="gemma4",
         # Gemma4 MoE experts are unfused into per-expert nn.Linear layers.
-        moe_block_names=("Gemma4TextDecoderLayer",),
+        block_names=("Gemma4TextDecoderLayer",),
         expert_linear_names=("gate_proj", "down_proj", "up_proj"),
         has_iterable_experts=True,
     )

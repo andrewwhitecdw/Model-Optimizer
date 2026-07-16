@@ -985,7 +985,7 @@ def get_expert_linear_names(module: nn.Module) -> list[str]:
 
     raise NotImplementedError(
         f"Cannot resolve expert linear names for MoE block {type(module).__name__!r}. "
-        "Register an ExportSpec with expert_linear_names for this model under "
+        "Register a MoESpec with expert_linear_names for this model under "
         "modelopt/modeling/models/."
     )
 

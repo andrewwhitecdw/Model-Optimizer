@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, TypeVar
 from .base import ModelSpec
 from .export import ExportSpec
 from .matching import match_class_names
+from .moe import MoESpec
 
 if TYPE_CHECKING:
     import torch.nn as nn
@@ -68,14 +69,14 @@ def iter_pqs_fuse_rules():
         yield from spec.pqs_fuse_rules
 
 
-def match_moe_block(module: "nn.Module") -> ExportSpec | None:
-    """Return the export spec whose ``moe_block_names`` matches ``module``.
+def match_moe_block(module: "nn.Module") -> MoESpec | None:
+    """Return the MoE spec whose ``block_names`` matches ``module``.
 
     Case-insensitive exact-name match against the class names in ``module``'s MRO
     (see ``matching.match_class_names``); quantized wrapper classes match through
     their original base class.
     """
-    for spec in iter_specs(ExportSpec):
-        if match_class_names(module, spec.moe_block_names):
+    for spec in iter_specs(MoESpec):
+        if match_class_names(module, spec.block_names):
             return spec
     return None

@@ -15,13 +15,13 @@
 
 """Qwen2-MoE specs (HF model type ``qwen2_moe``)."""
 
-from ..export import ExportSpec
+from ..moe import MoESpec
 from ..registry import register
 
 register(
-    ExportSpec(
+    MoESpec(
         model_type="qwen2_moe",
-        moe_block_names=("Qwen2MoeSparseMoeBlock",),
+        block_names=("Qwen2MoeSparseMoeBlock",),
         expert_linear_names=("gate_proj", "down_proj", "up_proj"),
         has_iterable_experts=True,
     )

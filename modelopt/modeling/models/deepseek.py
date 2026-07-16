@@ -19,13 +19,17 @@ Matches the remote-code ``DeepseekMoE`` block, not the HF-native ``deepseek_v3``
 classes.
 """
 
-from ..export import ExportSpec
+from ..moe import MoESpec
 from ..registry import register
 
+# DeepseekMoE experts ARE structurally iterable (ModuleList of DeepseekMLP), but
+# has_iterable_experts stays False until the grouped export path (get_experts_list
+# resmoothing) is validated on this model — the flag currently doubles as that
+# support gate.
 register(
-    ExportSpec(
+    MoESpec(
         model_type="deepseek",
-        moe_block_names=("DeepseekMoE",),
+        block_names=("DeepseekMoE",),
         expert_linear_names=("gate_proj", "down_proj", "up_proj"),
     )
 )

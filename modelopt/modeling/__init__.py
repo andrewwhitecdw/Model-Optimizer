@@ -16,14 +16,16 @@
 """Per-model descriptors, organized by HF model type.
 
 Holds declarative per-model data (no algorithms), one module per HF model type under
-``models/``, mirroring ``transformers.models``. Each modelopt subsystem has its own
-``ModelSpec`` subclass (e.g. ``ExportSpec``); consumers resolve a spec via the
-registry lookups and read its fields; an unmatched lookup returns ``None`` so callers
-fall back to their default behavior.
+``models/``, mirroring ``transformers.models``. Architecture facts live in topic
+specs shared across subsystems (``MoESpec``); per-subsystem policy lives in
+subsystem specs (``ExportSpec``). Consumers resolve a spec via the registry lookups
+and read its fields; an unmatched lookup returns ``None`` so callers fall back to
+their default behavior.
 """
 
 # Importing models registers every spec as a side effect.
 from . import models
 from .base import *
 from .export import *
+from .moe import *
 from .registry import *

@@ -15,10 +15,15 @@
 
 """Common base for per-model descriptors.
 
-Each modelopt subsystem declares its per-model data in its own ``ModelSpec``
-subclass (e.g. ``ExportSpec``; quantization / speculative-decoding specs to follow),
-so consumers can read these values instead of branching on model names. Specs hold
-per-model data only, no logic.
+``ModelSpec`` subclasses come in two kinds, both registered per model so consumers
+read values instead of branching on model names:
+
+- **topic specs** hold architecture facts shared across subsystems (e.g. ``MoESpec``:
+  what a model's MoE blocks are);
+- **subsystem specs** hold one subsystem's per-model policy (e.g. ``ExportSpec``;
+  quantization / speculative-decoding specs to follow).
+
+Specs hold per-model data only, no logic.
 """
 
 from dataclasses import dataclass

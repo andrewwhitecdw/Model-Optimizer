@@ -15,15 +15,15 @@
 
 """Mixtral specs (HF model type ``mixtral``)."""
 
-from ..export import ExportSpec
+from ..moe import MoESpec
 from ..registry import register
 
 # Mixtral with iterable experts uses w1/w2/w3. Fused experts (transformers 5.0+) are
 # detected from their per-expert quantizer attributes and need no naming override here.
 register(
-    ExportSpec(
+    MoESpec(
         model_type="mixtral",
-        moe_block_names=("MixtralSparseMoeBlock",),
+        block_names=("MixtralSparseMoeBlock",),
         expert_linear_names=("w1", "w2", "w3"),
         has_iterable_experts=True,
     )
@@ -31,9 +31,9 @@ register(
 
 # Older transformers naming for Mixtral.
 register(
-    ExportSpec(
+    MoESpec(
         model_type="mixtral",
-        moe_block_names=("MixtralMoeSparseMoeBlock",),
+        block_names=("MixtralMoeSparseMoeBlock",),
         expert_linear_names=("linear_fc1", "linear_fc2"),
     )
 )

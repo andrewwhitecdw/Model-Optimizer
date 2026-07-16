@@ -13,7 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Per-model data consumed by the unified HF export path."""
+"""Per-model policy of the unified HF export path.
+
+Architecture facts (MoE block classes, expert naming) live in ``MoESpec``; this spec
+holds decisions that belong to the export/quantization algorithms only.
+"""
 
 from dataclasses import dataclass
 
@@ -24,27 +28,12 @@ __all__ = ["ExportSpec"]
 
 @dataclass
 class ExportSpec(ModelSpec):
-    """Per-model data for the unified HF export path.
-
-    Resolved from a model sub-module via ``moe_block_names``, the matching key: MoE
-    block class names (e.g. ``"Qwen3MoeSparseMoeBlock"``) compared case-insensitively
-    against the class names in the module's MRO (see ``matching.match_class_names``).
-    """
-
-    moe_block_names: tuple[str, ...] = ()
-    """Matching key: MoE block class names, matched against the module's MRO
-    (case-insensitive exact names, not substrings)."""
-
-    expert_linear_names: tuple[str, ...] | None = None
-    """Expert linear projection names, e.g. ``("gate_proj", "down_proj", "up_proj")``."""
-
-    has_iterable_experts: bool = False
-    """True when experts are per-expert iterable sub-modules (Mixtral, Qwen MoE,
-    NemotronH, Gemma4) and can be grouped by ``get_experts_list``; False for stacked
-    or fused layouts (DBRX, GptOss)."""
+    """Per-model policy for the unified HF export path."""
 
     pqs_fuse_rules: tuple[tuple[tuple[str, ...], str, str], ...] = ()
     """AWQ ``pre_quant_scale`` fusion rules, each a ``(module_class_substrings,
     fuse_into, fuse_from)`` triple: for a module whose class name contains one of the
     substrings, the pre_quant_scale on ``fuse_from`` is folded into ``fuse_into``
-    (e.g. attention ``o_proj`` -> ``v_proj``, MLP ``down_proj`` -> ``up_proj``)."""
+    (e.g. attention ``o_proj`` -> ``v_proj``, MLP ``down_proj`` -> ``up_proj``).
+    A rule is a validated mathematical-equivalence claim for that model's modules,
+    which is why it is declared per model rather than applied generically."""
