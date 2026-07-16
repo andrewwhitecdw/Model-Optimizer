@@ -16,7 +16,7 @@
 """DBRX specs (HF model type ``dbrx``)."""
 
 from ..registry import register
-from ..specs import MoESpec, MoEVariant
+from ..specs import ModelSpec, MoEVariant
 
 # HF DbrxFFN (non-standard block name, identified for is_moe). Expert names refer to
 # the quantized layout: _QuantDbrxExpertGLU converts the fused w1/v1/w2 parameters
@@ -24,9 +24,9 @@ from ..specs import MoESpec, MoEVariant
 # modelopt/torch/quantization/plugins/huggingface.py), which is what the DBRX
 # prepare handler fills amax values on.
 register(
-    MoESpec(
+    ModelSpec(
         model_type="dbrx",
-        variants=(
+        moe_variants=(
             MoEVariant(
                 block_names=("DbrxFFN",),
                 expert_linear_names=("w1_linear", "w2_linear", "v1_linear"),

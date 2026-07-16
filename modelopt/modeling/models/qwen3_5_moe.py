@@ -16,12 +16,12 @@
 """Qwen3.5-MoE specs (HF model type ``qwen3_5_moe``)."""
 
 from ..registry import register
-from ..specs import MoESpec, MoEVariant
+from ..specs import ModelSpec, MoEVariant
 
 register(
-    MoESpec(
+    ModelSpec(
         model_type="qwen3_5_moe",
-        variants=(
+        moe_variants=(
             MoEVariant(
                 block_names=("Qwen3_5MoeSparseMoeBlock",),
                 expert_linear_names=("gate_proj", "down_proj", "up_proj"),

@@ -16,12 +16,12 @@
 """Qwen3-MoE specs (HF model type ``qwen3_moe``)."""
 
 from ..registry import register
-from ..specs import ExportSpec, MoESpec, MoEVariant
+from ..specs import ModelSpec, MoEVariant
 
 register(
-    MoESpec(
+    ModelSpec(
         model_type="qwen3_moe",
-        variants=(
+        moe_variants=(
             MoEVariant(
                 block_names=("Qwen3MoeSparseMoeBlock",),
                 expert_linear_names=("gate_proj", "down_proj", "up_proj"),
@@ -29,12 +29,6 @@ register(
                 has_iterable_experts=True,
             ),
         ),
-    )
-)
-
-register(
-    ExportSpec(
-        model_type="qwen3_moe",
         # AWQ pre_quant_scale fusion: fold o_proj into v_proj, down_proj into up_proj.
         pqs_fuse_rules=(
             (("Qwen3MoeAttention",), "v_proj", "o_proj"),

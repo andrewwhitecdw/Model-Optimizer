@@ -15,35 +15,30 @@
 
 """Per-model descriptor classes.
 
-``ModelSpec`` subclasses come in two kinds, both registered per model so consumers
-read values instead of branching on model names:
+``ModelSpec`` is the one global descriptor of a model: everything modelopt knows
+about a model type lives on a single instance, resolved by ``config.model_type``.
+It is composed from section mixins so each concern stays a small, separate class:
 
-- **topic specs** hold architecture facts shared across subsystems (``MoESpec``:
+- **topic sections** hold architecture facts shared across subsystems (``MoESpec``:
   what a model's MoE blocks are; ``NormSpec``: norm-layer conventions);
-- **subsystem specs** hold one subsystem's per-model policy (``ExportSpec``;
-  quantization / speculative-decoding specs to follow).
+- **subsystem sections** hold one subsystem's per-model policy (``ExportSpec``;
+  quantization / speculative-decoding sections to follow).
 
-Specs hold per-model data plus trivial accessors over that data; subsystem logic
-never lives here.
+Sections hold per-model data plus trivial accessors over that data; subsystem logic
+never lives here. A model file registers exactly one ``ModelSpec``, filling only the
+sections it customizes (see ``models/``).
 """
 
 from dataclasses import dataclass
 
-__all__ = ["ExportSpec", "MoESpec", "MoEVariant", "ModelSpec", "NormSpec", "match_class_names"]
-
-
-@dataclass
-class ModelSpec:
-    """Base class for per-model data specs.
-
-    Subclasses add the data fields of one topic or subsystem; a model registers one
-    spec instance per kind it customizes (see ``models/``).
-    """
-
-    model_type: str
-    """The HF model type this spec belongs to (``config.model_type``, e.g.
-    ``"qwen3_moe"``). A model registers one spec instance per spec kind; same-model
-    layout variants nest inside the spec (see ``MoESpec.variants``)."""
+__all__ = [
+    "ExportSpec",
+    "MoESpec",
+    "MoEVariant",
+    "ModelSpec",
+    "NormSpec",
+    "match_class_names",
+]
 
 
 def match_class_names(module, names: tuple[str, ...]) -> bool:
@@ -62,7 +57,7 @@ def match_class_names(module, names: tuple[str, ...]) -> bool:
     return any(name.lower() in mro_names for name in names)
 
 
-@dataclass
+@dataclass(kw_only=True)
 class MoEVariant:
     """One concrete MoE-block layout of a model.
 
@@ -95,23 +90,23 @@ class MoEVariant:
     ``sync_moe_gate_up_amax``) and by calibration grouping."""
 
 
-@dataclass
-class MoESpec(ModelSpec):
-    """MoE architecture facts for one model: its MoE-block layout variant(s).
+@dataclass(kw_only=True)
+class MoESpec:
+    """Topic section: MoE architecture facts — the model's MoE-block layout(s).
 
-    Unlike the subsystem specs, this describes what a model's MoE blocks *are* —
-    which class, what the expert projections are called — so any modelopt subsystem
-    (export, quantization, speculative decoding, ...) can read it instead of keeping
-    its own per-model MoE table.
+    This describes what a model's MoE blocks *are* — which class, what the expert
+    projections are called — so any modelopt subsystem (export, quantization,
+    speculative decoding, ...) can read it instead of keeping its own per-model MoE
+    table.
     """
 
-    variants: tuple[MoEVariant, ...] = ()
+    moe_variants: tuple[MoEVariant, ...] = ()
     """The model's MoE-block layouts; more than one when the same checkpoint
     materializes differently (see ``MoEVariant``)."""
 
-    def match_variant(self, module) -> MoEVariant | None:
+    def match_moe_variant(self, module) -> MoEVariant | None:
         """Return the variant whose ``block_names`` matches ``module``, else None."""
-        for variant in self.variants:
+        for variant in self.moe_variants:
             if match_class_names(module, variant.block_names):
                 return variant
         return None
@@ -125,21 +120,18 @@ class MoESpec(ModelSpec):
         """
         namings = {
             variant.expert_linear_names
-            for variant in self.variants
+            for variant in self.moe_variants
             if variant.expert_linear_names is not None
         }
         if len(namings) == 1:
             return next(iter(namings))
-        variant = self.match_variant(module)
+        variant = self.match_moe_variant(module)
         return variant.expert_linear_names if variant is not None else None
 
 
-@dataclass
-class NormSpec(ModelSpec):
-    """Normalization-layer architecture facts for one model.
-
-    Topic spec (like ``MoESpec``): shared facts any subsystem can read.
-    """
+@dataclass(kw_only=True)
+class NormSpec:
+    """Topic section: normalization-layer architecture facts."""
 
     weight_plus_one_norm_names: tuple[str, ...] = ()
     """Class names of norm layers whose stored weight is ``w - 1`` (the effective
@@ -150,12 +142,12 @@ class NormSpec(ModelSpec):
     in the engine."""
 
 
-@dataclass
-class ExportSpec(ModelSpec):
-    """Per-model policy for the unified HF export path.
+@dataclass(kw_only=True)
+class ExportSpec:
+    """Subsystem section: per-model policy of the unified HF export path.
 
     Architecture facts (MoE block classes, expert naming) live in ``MoESpec``; this
-    spec holds decisions that belong to the export/quantization algorithms only.
+    section holds decisions that belong to the export/quantization algorithms only.
     """
 
     pqs_fuse_rules: tuple[tuple[tuple[str, ...], str, str], ...] = ()
@@ -165,3 +157,16 @@ class ExportSpec(ModelSpec):
     (e.g. attention ``o_proj`` -> ``v_proj``, MLP ``down_proj`` -> ``up_proj``).
     A rule is a validated mathematical-equivalence claim for that model's modules,
     which is why it is declared per model rather than applied generically."""
+
+
+@dataclass(kw_only=True)
+class ModelSpec(MoESpec, NormSpec, ExportSpec):
+    """The one global per-model descriptor, composed from the section mixins.
+
+    Resolved by HF model type (see ``registry.get_spec``); a model registers exactly
+    one instance, filling only the sections it customizes.
+    """
+
+    model_type: str
+    """The HF model type this spec describes (``config.model_type``, e.g.
+    ``"qwen3_moe"``). Unique across the registry."""

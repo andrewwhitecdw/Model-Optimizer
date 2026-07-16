@@ -28,7 +28,7 @@ try:
 except Exception:
     warn("Cannot find transformers package. Hugginface modules cannot be exported.")
 
-from modelopt.modeling import MoESpec, collect_model_types, get_specs, match_moe_block
+from modelopt.modeling import collect_model_types, get_specs, match_moe_block
 from modelopt.torch.utils import distributed as dist
 from modelopt.torch.utils import import_plugin
 
@@ -997,7 +997,7 @@ def get_expert_linear_names(module: nn.Module, model_types: set[str]) -> list[st
 
     resolved = {
         names
-        for spec in get_specs(MoESpec, model_types)
+        for spec in get_specs(model_types)
         if (names := spec.expert_linear_names_for(module)) is not None
     }
     if len(resolved) == 1:

@@ -16,10 +16,10 @@
 """Llama specs (HF model type ``llama``)."""
 
 from ..registry import register
-from ..specs import ExportSpec
+from ..specs import ModelSpec
 
 register(
-    ExportSpec(
+    ModelSpec(
         model_type="llama",
         # AWQ pre_quant_scale fusion: fold o_proj into v_proj, down_proj into up_proj.
         pqs_fuse_rules=(

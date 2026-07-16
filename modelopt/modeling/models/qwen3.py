@@ -16,10 +16,10 @@
 """Qwen3 (dense) specs (HF model type ``qwen3``)."""
 
 from ..registry import register
-from ..specs import ExportSpec
+from ..specs import ModelSpec
 
 register(
-    ExportSpec(
+    ModelSpec(
         model_type="qwen3",
         # AWQ pre_quant_scale fusion: fold o_proj into v_proj, down_proj into up_proj.
         pqs_fuse_rules=(

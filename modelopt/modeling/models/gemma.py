@@ -20,12 +20,12 @@ Gemma4 has its own module (``gemma4.py``) for its MoE spec.
 """
 
 from ..registry import register
-from ..specs import NormSpec
+from ..specs import ModelSpec
 
 # Gemma RMSNorms store weight - 1 (the effective scale is weight + 1); scale-folding
 # engines (AWQ pre_quant_scale fusion into the norm) must account for the +1.
 # NOTE: Gemma4RMSNorm is intentionally absent to preserve legacy behavior; add it
 # once the +1 handling is validated on Gemma4.
-register(NormSpec(model_type="gemma", weight_plus_one_norm_names=("GemmaRMSNorm",)))
-register(NormSpec(model_type="gemma2", weight_plus_one_norm_names=("Gemma2RMSNorm",)))
-register(NormSpec(model_type="gemma3", weight_plus_one_norm_names=("Gemma3RMSNorm",)))
+register(ModelSpec(model_type="gemma", weight_plus_one_norm_names=("GemmaRMSNorm",)))
+register(ModelSpec(model_type="gemma2", weight_plus_one_norm_names=("Gemma2RMSNorm",)))
+register(ModelSpec(model_type="gemma3", weight_plus_one_norm_names=("Gemma3RMSNorm",)))

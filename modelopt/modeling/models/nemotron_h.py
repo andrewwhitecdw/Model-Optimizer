@@ -16,12 +16,12 @@
 """Nemotron-H specs (HF model type ``nemotron_h``)."""
 
 from ..registry import register
-from ..specs import MoESpec, MoEVariant
+from ..specs import ModelSpec, MoEVariant
 
 register(
-    MoESpec(
+    ModelSpec(
         model_type="nemotron_h",
-        variants=(
+        moe_variants=(
             MoEVariant(
                 # NemotronHMOE experts (NemotronHMLP) use up_proj and down_proj only (no gate).
                 block_names=("NemotronHMOE",),

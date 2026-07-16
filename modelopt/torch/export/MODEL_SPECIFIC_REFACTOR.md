@@ -52,10 +52,10 @@ Two layers:
 
 ```text
 modelopt/modeling/
-  specs.py       # ModelSpec (base) + topic specs (MoESpec/NormSpec: shared
-                 # architecture facts; MoESpec nests one MoEVariant per concrete
-                 # block layout) + subsystem specs (ExportSpec: HF-export-path
-                 # policy); future topic/subsystem specs go here too
+  specs.py       # ModelSpec — the ONE global per-model descriptor, composed
+                 # from section mixins: topic sections (MoESpec: MoE layouts as
+                 # MoEVariant tuples; NormSpec) + subsystem sections (ExportSpec);
+                 # future sections mix in the same way
   registry.py    # register() + lookups queried by spec type (None when unmatched)
                  # + the MRO exact-name matching core (match_class_names)
   __init__.py    # re-exports; importing it registers all specs
@@ -69,6 +69,9 @@ Model type names mirror
 (e.g. `qwen3_moe.py`, `gpt_oss.py`, `nemotron_h.py`); trust-remote-code models
 (`arctic`, `deepseek`) use their config `model_type`.
 
+Each model registers exactly ONE `ModelSpec` (registry enforces uniqueness), so
+`get_spec(model_type)` is a dict lookup and consumers call methods directly on the
+global spec (e.g. `spec.expert_linear_names_for(module)`).
 Resolution is by model type first, mirroring HF's own indexing: the engine
 collects the model's HF model types once per export
 (`collect_model_types(model.config)` — root plus sub-configs, so VLM towers

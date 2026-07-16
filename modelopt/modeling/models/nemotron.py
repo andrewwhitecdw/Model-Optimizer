@@ -16,14 +16,14 @@
 """Nemotron specs (HF model type ``nemotron``); Nemotron-H lives in ``nemotron_h.py``."""
 
 from ..registry import register
-from ..specs import NormSpec
+from ..specs import ModelSpec
 
 # LayerNorm1P stores weight - 1 (zero-centered gamma). Both the plain Megatron-style
 # class name and the HF Nemotron port are listed; modules exposing a
 # ``zero_centered_gamma`` attribute are additionally caught by the engine's
 # structural fallback.
 register(
-    NormSpec(
+    ModelSpec(
         model_type="nemotron",
         weight_plus_one_norm_names=("LayerNorm1P", "NemotronLayerNorm1P"),
     )

@@ -16,12 +16,12 @@
 """Snowflake Arctic specs (trust-remote-code model type ``arctic``)."""
 
 from ..registry import register
-from ..specs import MoESpec, MoEVariant
+from ..specs import ModelSpec, MoEVariant
 
 register(
-    MoESpec(
+    ModelSpec(
         model_type="arctic",
-        variants=(
+        moe_variants=(
             MoEVariant(
                 # Non-standard block name (for is_moe identification).
                 block_names=("ArcticMoE",),

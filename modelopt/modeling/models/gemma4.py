@@ -16,12 +16,12 @@
 """Gemma4 specs (HF model type ``gemma4``)."""
 
 from ..registry import register
-from ..specs import MoESpec, MoEVariant
+from ..specs import ModelSpec, MoEVariant
 
 register(
-    MoESpec(
+    ModelSpec(
         model_type="gemma4",
-        variants=(
+        moe_variants=(
             MoEVariant(
                 # Gemma4 MoE experts are unfused into per-expert nn.Linear layers.
                 block_names=("Gemma4TextDecoderLayer",),

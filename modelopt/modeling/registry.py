@@ -13,26 +13,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Registry that resolves a model sub-module to its spec.
+"""Registry indexing the per-model ``ModelSpec`` by HF model type.
 
-Model modules register their specs at import time (see ``models/``). Lookups return
-``None`` when nothing matches, so callers can fall back to their default behavior.
+Model modules register their spec at import time (see ``models/``); one spec per
+model type. Lookups return ``None`` (or an empty list) when nothing matches, so
+callers can fail loudly or fall back per their own policy.
 
-Matching is by class-name string only, so this package stays dependency-free (any
-``nn.Module`` — or any object — can be passed to the lookups without importing torch
-here).
+Matching is by model-type and class-name strings only, so this package stays
+dependency-free (any ``nn.Module`` — or any object — can be passed to the lookups
+without importing torch here).
 """
 
 from collections.abc import Iterator
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING
 
-from .specs import ExportSpec, ModelSpec, MoESpec, MoEVariant, NormSpec
+from .specs import ModelSpec, MoEVariant
 
 if TYPE_CHECKING:
     import torch.nn as nn
 
 __all__ = [
     "collect_model_types",
+    "get_spec",
     "get_specs",
     "iter_gate_up_pairs",
     "iter_pqs_fuse_rules",
@@ -41,58 +43,59 @@ __all__ = [
     "weight_plus_one_norm_names",
 ]
 
-SpecT = TypeVar("SpecT", bound=ModelSpec)
-
-_SPECS: list[ModelSpec] = []
+_SPECS: dict[str, ModelSpec] = {}
 
 
-def register(spec: SpecT) -> SpecT:
-    """Register a model spec and return it."""
-    _SPECS.append(spec)
+def register(spec: ModelSpec) -> ModelSpec:
+    """Register a model spec and return it. One spec per model type."""
+    if spec.model_type in _SPECS:
+        raise ValueError(f"ModelSpec for model type {spec.model_type!r} already registered")
+    _SPECS[spec.model_type] = spec
     return spec
 
 
-def get_specs(spec_cls: type[SpecT], model_types: set[str] | None = None) -> list[SpecT]:
-    """Return the registered specs of type ``spec_cls``, in registration order.
+def get_spec(model_type: str) -> ModelSpec | None:
+    """Return the spec registered for ``model_type``, or ``None``."""
+    return _SPECS.get(model_type)
+
+
+def get_specs(model_types: set[str] | None = None) -> list[ModelSpec]:
+    """Return registered specs, in registration order.
 
     This is the model_type index: with ``model_types`` (from
     ``collect_model_types(model.config)``), only the specs belonging to the model's
     own model types are returned, so consumers resolve per-model data without
-    scanning the registry. Without it, all specs of the type are returned
-    (aggregators, no-config compatibility).
+    scanning the registry. Without it, all specs are returned (aggregators,
+    no-config compatibility).
     """
-    return [
-        spec
-        for spec in _SPECS
-        if isinstance(spec, spec_cls) and (not model_types or spec.model_type in model_types)
-    ]
+    return [spec for spec in _SPECS.values() if not model_types or spec.model_type in model_types]
 
 
 def iter_pqs_fuse_rules():
     """Yield every ``(module_class_substrings, fuse_into, fuse_from)`` AWQ fusion rule.
 
-    Aggregated across all registered export specs (the consumer matches each model
-    module against the substrings, so the order across specs does not matter).
+    Aggregated across all registered specs (the consumer matches each model module
+    against the substrings, so the order across specs does not matter).
     """
-    for spec in get_specs(ExportSpec):
+    for spec in get_specs():
         yield from spec.pqs_fuse_rules
 
 
 def iter_gate_up_pairs() -> Iterator[tuple[str, str]]:
-    """Yield the distinct (gate, up) projection-name pairs across all MoE specs.
+    """Yield the distinct (gate, up) projection-name pairs across all MoE variants.
 
     GLOBAL-VOCABULARY semantics: consumers (currently only calibration sibling
     grouping in ``quantization/model_calib.py``, which also walks dense MLPs that
-    no MoE spec can match) try every pair opportunistically on every module,
+    no MoE variant can match) try every pair opportunistically on every module,
     getattr-guarded. Adding a pair to any spec therefore changes behavior for ALL
     models whose modules happen to carry those attribute names — prefer per-module
     resolution (``match_moe_block(module).gate_up_pair``) wherever the module is an
-    identifiable MoE block. The dense-MLP case moves to a fusion-group topic spec
-    in a follow-up (see MODEL_SPECIFIC_REFACTOR.md P5).
+    identifiable MoE block. The dense-MLP case moves to a fusion-group topic
+    section in a follow-up (see MODEL_SPECIFIC_REFACTOR.md P5).
     """
     seen = set()
-    for spec in get_specs(MoESpec):
-        for variant in spec.variants:
+    for spec in get_specs():
+        for variant in spec.moe_variants:
             pair = variant.gate_up_pair
             if pair is not None and pair not in seen:
                 seen.add(pair)
@@ -100,8 +103,8 @@ def iter_gate_up_pairs() -> Iterator[tuple[str, str]]:
 
 
 def weight_plus_one_norm_names() -> tuple[str, ...]:
-    """All norm class names whose stored weight is ``w - 1``, across all norm specs."""
-    return tuple(name for spec in get_specs(NormSpec) for name in spec.weight_plus_one_norm_names)
+    """All norm class names whose stored weight is ``w - 1``, across all specs."""
+    return tuple(name for spec in get_specs() for name in spec.weight_plus_one_norm_names)
 
 
 def collect_model_types(config) -> set[str]:
@@ -144,11 +147,11 @@ def match_moe_block(module: "nn.Module", model_types: set[str] | None = None) ->
     the TRT-LLM path) searches all specs.
 
     Within the scope, each spec's variant ``block_names`` identifies the block and
-    disambiguates same-model layout variants (``MoESpec.match_variant``); quantized
-    wrapper classes match through their original base class in the MRO.
+    disambiguates same-model layout variants (``MoESpec.match_moe_variant``);
+    quantized wrapper classes match through their original base class in the MRO.
     """
-    for spec in get_specs(MoESpec, model_types):
-        variant = spec.match_variant(module)
+    for spec in get_specs(model_types):
+        variant = spec.match_moe_variant(module)
         if variant is not None:
             return variant
     return None

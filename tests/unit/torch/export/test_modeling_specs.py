@@ -19,7 +19,7 @@ import pytest
 import torch.nn as nn
 
 from modelopt.modeling import (
-    MoESpec,
+    ModelSpec,
     MoEVariant,
     collect_model_types,
     iter_gate_up_pairs,
@@ -268,8 +268,8 @@ def test_match_moe_block_scope_prefers_own_model_type():
         block_names=("Qwen3MoeSparseMoeBlock",),
         expert_linear_names=("a_proj", "b_proj"),
     )
-    fork_spec = MoESpec(model_type="zz_fork", variants=(fork_variant,))
-    _SPECS.append(fork_spec)
+    fork_spec = ModelSpec(model_type="zz_fork", moe_variants=(fork_variant,))
+    _SPECS[fork_spec.model_type] = fork_spec
     try:
         assert match_moe_block(Qwen3MoeSparseMoeBlock(), {"zz_fork"}) is fork_variant
         assert match_moe_block(Qwen3MoeSparseMoeBlock(), {"qwen3_moe"}).expert_linear_names == (
@@ -284,7 +284,7 @@ def test_match_moe_block_scope_prefers_own_model_type():
             "up_proj",
         )
     finally:
-        _SPECS.remove(fork_spec)
+        del _SPECS[fork_spec.model_type]
 
 
 def test_match_moe_block_scope_is_strict():
