@@ -30,7 +30,10 @@ helpers) consume. Inventory of model-specific logic reachable from the HF path:
 | Duplicate expert-naming table + iterable-experts support gate | `layer_utils.get_experts_list` | data — **migrated (P1)** |
 | MoE block class-name list | `layer_utils.is_moe` | data — **migrated (P3)** |
 | AWQ `pre_quant_scale` fusion rules (Llama/Qwen3) | `quant_utils.PQS_FUSE_MODULE_MAPPING` | data — **migrated (P2)** |
-| weight+1 layernorm class names (Gemma RMSNorm, LayerNorm1P) | `quant_utils._layernorm_uses_weight_plus_one` | data |
+| weight+1 layernorm class names (Gemma RMSNorm, LayerNorm1P) | `quant_utils._layernorm_uses_weight_plus_one` | data — **migrated (NormSpec)** |
+| MoE gate/up fusion pairs (`_GATE_UP_PAIRS`, also privately imported by `quantization/model_calib.py`) | `layer_utils.sync_moe_gate_up_amax` | data — **migrated (MoESpec.gate_up_pair)** |
+| BMM-style expert class list (`Llama4TextExperts`/`GptOssExperts`) inline copy for weight transpose | `quant_utils` (dispatch copies in `hf_export_handlers.py` stay) | data — P4 |
+| VLM detection gates (`phi4mm` model_type, `nemotronparse` architecture, `"nemotron" in model_type` tower special case) | `model_utils.py`, `unified_export_hf.py` | data (gates) + behavior (extraction) — collect until worth a spec flag |
 | Handler match keys (Llama4TextExperts, GptOssExperts, DbrxExperts, QuantMoELinear) | `hf_export_handlers.py` | dispatch (stays: structural, per-module) |
 | Fused-expert gated/non-gated split (`gate_up_proj` vs `up_proj`) | `moe_utils.py` | data + structure |
 | dummy-forward special cases (Whisper input, Nemotron-VL tower) | `unified_export_hf.requantize_resmooth_fused_llm_layers` | behavior |
@@ -49,13 +52,12 @@ Two layers:
 
 ```text
 modelopt/modeling/
-  base.py        # ModelSpec — common base class (model_type)
-  moe.py         # MoESpec(ModelSpec) — topic spec: MoE architecture facts shared
-                 # across subsystems (future: attention/norm topic specs)
-  export.py      # ExportSpec(ModelSpec) — subsystem spec: HF-export-path policy
-                 # (future: quantization / speculative-decoding subsystem specs)
-  matching.py    # module <-> class-name matching core (MRO exact-name)
-  registry.py    # register() + lookups, queried by spec type; None when unmatched
+  specs.py       # ModelSpec (base) + topic specs (MoESpec: shared architecture
+                 # facts) + subsystem specs (ExportSpec: HF-export-path policy);
+                 # future attention/norm topic specs and quantization/spec-dec
+                 # subsystem specs go here too
+  registry.py    # register() + lookups queried by spec type (None when unmatched)
+                 # + the MRO exact-name matching core (match_class_names)
   __init__.py    # re-exports; importing it registers all specs
   models/        # one small file per HF model type (mirrors transformers.models);
                  # import == registration; a model registers one instance per spec
@@ -93,9 +95,9 @@ against existing export tests.
 | **P2** | `PQS_FUSE_MODULE_MAPPING` → `spec.pqs_fuse_rules`, aggregated via `iter_pqs_fuse_rules` (llama/qwen3 specs). | this PR |
 | **P3** | `is_moe` explicit class-name list → `spec.moe_block_names` (arctic/dbrx_ffn are identification-only specs: no expert naming, so expert-name lookups keep the engine default). The generic `*SparseMoeBlock`/`*MoeLayer` conventions and the structural router+experts check stay in the engine. | this PR |
 | **P4** | HF handlers consume specs directly; fold remaining `moe_utils` naming data into specs; share the matcher machinery with the export dispatch registry (#1939). | planned |
-| **P5** | Cross-subsystem pilot: unify the 3 copies of linear-fusion-group knowledge (see §4) into a spec field; delete `model_calib.py`'s private import of `export._GATE_UP_PAIRS`. `modelopt/modeling` is already top-level and stdlib-only, so quantization can consume it directly — no promotion or re-export shim needed. | planned |
+| **P5** | Cross-subsystem pilot: unify the remaining copies of linear-fusion-group knowledge (see §4) into spec fields. Partially done: `_GATE_UP_PAIRS` became `MoESpec.gate_up_pair` and `model_calib.py`'s private import of it is gone — the first quantization consumer of `modelopt.modeling`. Remaining: `shared_input.SHARED_PATTERNS`, `algorithms.quant_grouping_rules`. | in progress |
 | **P6** | Migrate remaining quantization-side data: default disabled-quantizer patterns, on-the-fly conversion gates, AutoQuantize grouping rules (see §4). | planned |
-| **OUT** | TRT-LLM path branches (`decoder_type` chains in `build_*`, `model_config_export.py`, `tensorrt_llm_utils.py`): frozen, moved out unchanged on a separate track. Dead code found during inventory (`MODEL_NAME_TO_TYPE`, `get_model_type`, `adjust_attn_amax_values`, `update_experts_avg_prequant_scale`) is deleted on that track too. | separate track |
+| **OUT** | TRT-LLM path branches (`decoder_type` chains in `build_*`, `model_config_export.py`, `tensorrt_llm_utils.py`): frozen, moved out unchanged on a separate track. Candidates for deletion on that track: `adjust_attn_amax_values`, `update_experts_avg_prequant_scale` (unused). NOTE: `MODEL_NAME_TO_TYPE` / `get_model_type` are NOT dead — `examples/hf_ptq/hf_ptq.py` and `multinode_ptq.py` still call them; migrate the examples before removing. | separate track |
 
 **Guardrails:** one data category per PR (fallback-first while a category is
 partially migrated, explicit-error once specs cover it); the engine keeps the
@@ -110,7 +112,7 @@ engine behind structural checks.
 
 | Item | Location | Kind |
 |---|---|---|
-| Linear fusion groups (q/k/v, gate/up, `w1/w3`) — **duplicated 3x** | `export/layer_utils._GATE_UP_PAIRS`, `quantization/utils/shared_input.SHARED_PATTERNS`, `quantization/algorithms.quant_grouping_rules` | data — P5 |
+| Linear fusion groups (q/k/v, gate/up, `w1/w3`) — was duplicated 3x; the `_GATE_UP_PAIRS` copy is now `MoESpec.gate_up_pair` | `quantization/utils/shared_input.SHARED_PATTERNS`, `quantization/algorithms.quant_grouping_rules` (remaining) | data — P5 |
 | Model-class gates for on-the-fly conversion (`"DbrxForCausalLM"`, `("Step3p5ForCausalLM", ...)`) | `quantization/plugins/huggingface.py` | data — P6 |
 | Default disabled-quantizer patterns (`*router*`, `*vision_tower*`; per-model, NVBug-gated) | `modelopt_recipes/.../default_disabled_quantizers.yaml` | data — P6 |
 | AutoQuantize grouping regexes (llama q/k/v, Mixtral `w1/w2/w3`, NemotronH mixer) | `quantization/algorithms.py` | data — P6 |

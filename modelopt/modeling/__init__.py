@@ -25,7 +25,5 @@ their default behavior.
 
 # Importing models registers every spec as a side effect.
 from . import models
-from .base import *
-from .export import *
-from .moe import *
 from .registry import *
+from .specs import *

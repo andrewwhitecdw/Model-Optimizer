@@ -28,7 +28,7 @@ try:
 except Exception:
     warn("Cannot find transformers package. Hugginface modules cannot be exported.")
 
-from modelopt.modeling import match_moe_block
+from modelopt.modeling import iter_gate_up_pairs, match_moe_block
 from modelopt.torch.utils import distributed as dist
 from modelopt.torch.utils import import_plugin
 
@@ -1155,11 +1155,6 @@ def set_expert_quantizer_amax(
     return uncalibrated_modules
 
 
-# Gate/up naming pairs for standard (unfused) MoE architectures.
-# Fused variants (gate_up_proj, linear_fc1) already share a single quantizer and need no sync.
-_GATE_UP_PAIRS = [("gate_proj", "up_proj"), ("w1", "w3")]
-
-
 def sync_moe_gate_up_amax(model: nn.Module) -> int:
     """Take element-wise max of gate and up weight quantizer amaxes per expert.
 
@@ -1176,6 +1171,9 @@ def sync_moe_gate_up_amax(model: nn.Module) -> int:
     Returns:
         Number of expert gate/up pairs whose amaxes were synced.
     """
+    # Gate/up naming pairs are per-model data (MoESpec.gate_up_pair); fused variants
+    # (gate_up_proj, linear_fc1) already share a single quantizer and need no sync.
+    gate_up_pairs = list(iter_gate_up_pairs())
     synced = 0
     for _, sub_module in model.named_modules():
         if not (is_moe(sub_module) and hasattr(sub_module, "experts")):
@@ -1183,7 +1181,7 @@ def sync_moe_gate_up_amax(model: nn.Module) -> int:
         if not hasattr(sub_module.experts, "__iter__"):
             continue
         for expert in sub_module.experts:
-            for gate_name, up_name in _GATE_UP_PAIRS:
+            for gate_name, up_name in gate_up_pairs:
                 gate_linear = getattr(expert, gate_name, None)
                 up_linear = getattr(expert, up_name, None)
                 if gate_linear is None or up_linear is None:

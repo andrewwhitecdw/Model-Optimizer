@@ -13,16 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GPT-OSS specs (HF model type ``gpt_oss``)."""
+"""Nemotron specs (HF model type ``nemotron``); Nemotron-H lives in ``nemotron_h.py``."""
 
 from ..registry import register
-from ..specs import MoESpec
+from ..specs import NormSpec
 
+# LayerNorm1P stores weight - 1 (zero-centered gamma). Both the plain Megatron-style
+# class name and the HF Nemotron port are listed; modules exposing a
+# ``zero_centered_gamma`` attribute are additionally caught by the engine's
+# structural fallback.
 register(
-    MoESpec(
-        model_type="gpt_oss",
-        # GPT-OSS fuses gate and up into a single gate_up_proj.
-        block_names=("GptOssMoE",),
-        expert_linear_names=("gate_up_proj", "down_proj"),
+    NormSpec(
+        model_type="nemotron",
+        weight_plus_one_norm_names=("LayerNorm1P", "NemotronLayerNorm1P"),
     )
 )

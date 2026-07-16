@@ -15,8 +15,8 @@
 
 """Snowflake Arctic specs (trust-remote-code model type ``arctic``)."""
 
-from ..moe import MoESpec
 from ..registry import register
+from ..specs import MoESpec
 
 register(
     MoESpec(
@@ -26,5 +26,6 @@ register(
         # ArcticMLP experts use Mixtral-style w1/w2/w3 naming (previously served by
         # the engine's implicit w1/w2/w3 default, now declared explicitly).
         expert_linear_names=("w1", "w2", "w3"),
+        gate_up_pair=("w1", "w3"),
     )
 )

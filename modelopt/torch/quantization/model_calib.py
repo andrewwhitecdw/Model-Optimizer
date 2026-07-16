@@ -87,10 +87,9 @@ def _is_calibrated_nvfp4_static(q) -> bool:
 
 def _collect_grouped_linears(model: nn.Module) -> list[list[nn.Module]]:
     """Collect name-based sibling groups (Q/K/V, gate/up, w1/w3) of calibrated NVFP4-static linears."""
-    # Inline import: layer_utils -> quant_utils -> model_calib cycle.
-    from modelopt.torch.export.layer_utils import _GATE_UP_PAIRS
+    from modelopt.modeling import iter_gate_up_pairs
 
-    patterns: tuple[tuple[str, ...], ...] = (("q_proj", "k_proj", "v_proj"), *_GATE_UP_PAIRS)
+    patterns: tuple[tuple[str, ...], ...] = (("q_proj", "k_proj", "v_proj"), *iter_gate_up_pairs())
     groups: list[list[nn.Module]] = []
     for parent in model.modules():
         for sibling_names in patterns:

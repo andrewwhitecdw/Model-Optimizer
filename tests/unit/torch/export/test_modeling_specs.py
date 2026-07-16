@@ -18,8 +18,14 @@
 import pytest
 import torch.nn as nn
 
-from modelopt.modeling import iter_pqs_fuse_rules, match_moe_block
+from modelopt.modeling import (
+    iter_gate_up_pairs,
+    iter_pqs_fuse_rules,
+    match_moe_block,
+    weight_plus_one_norm_names,
+)
 from modelopt.torch.export.layer_utils import get_expert_linear_names, get_experts_list, is_moe
+from modelopt.torch.export.quant_utils import _layernorm_uses_weight_plus_one
 
 
 class Qwen3MoeSparseMoeBlock(nn.Module):
@@ -156,3 +162,33 @@ def test_pqs_fuse_rules_match_legacy_mapping():
         ("Qwen3MoeMLP", "up_proj", "down_proj"),
     }
     assert rules == legacy
+
+
+def test_gate_up_pairs_match_legacy():
+    # Aggregated per-model pairs must reproduce the legacy _GATE_UP_PAIRS set.
+    assert set(iter_gate_up_pairs()) == {("gate_proj", "up_proj"), ("w1", "w3")}
+
+
+def test_weight_plus_one_norm_names_cover_legacy():
+    names = set(weight_plus_one_norm_names())
+    assert {"GemmaRMSNorm", "Gemma2RMSNorm", "Gemma3RMSNorm", "LayerNorm1P"} <= names
+
+
+def test_layernorm_weight_plus_one_via_specs():
+    class GemmaRMSNorm(nn.Module):
+        pass
+
+    class NemotronLayerNorm1P(nn.Module):
+        pass
+
+    class PlainRMSNorm(nn.Module):
+        pass
+
+    class ZeroCentered(nn.Module):
+        zero_centered_gamma = True
+
+    assert _layernorm_uses_weight_plus_one(GemmaRMSNorm())
+    assert _layernorm_uses_weight_plus_one(NemotronLayerNorm1P())
+    assert not _layernorm_uses_weight_plus_one(PlainRMSNorm())
+    # Structural fallback stays in the engine.
+    assert _layernorm_uses_weight_plus_one(ZeroCentered())

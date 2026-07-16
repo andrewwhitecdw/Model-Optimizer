@@ -19,8 +19,8 @@ Matches the remote-code ``DeepseekMoE`` block, not the HF-native ``deepseek_v3``
 classes.
 """
 
-from ..moe import MoESpec
 from ..registry import register
+from ..specs import MoESpec
 
 # DeepseekMoE experts ARE structurally iterable (ModuleList of DeepseekMLP), but
 # has_iterable_experts stays False until the grouped export path (get_experts_list
@@ -31,5 +31,6 @@ register(
         model_type="deepseek",
         block_names=("DeepseekMoE",),
         expert_linear_names=("gate_proj", "down_proj", "up_proj"),
+        gate_up_pair=("gate_proj", "up_proj"),
     )
 )

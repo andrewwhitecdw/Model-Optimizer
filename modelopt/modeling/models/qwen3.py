@@ -15,8 +15,8 @@
 
 """Qwen3 (dense) specs (HF model type ``qwen3``)."""
 
-from ..export import ExportSpec
 from ..registry import register
+from ..specs import ExportSpec
 
 register(
     ExportSpec(

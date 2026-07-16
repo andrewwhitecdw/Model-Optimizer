@@ -15,8 +15,8 @@
 
 """DBRX specs (HF model type ``dbrx``)."""
 
-from ..moe import MoESpec
 from ..registry import register
+from ..specs import MoESpec
 
 register(
     MoESpec(

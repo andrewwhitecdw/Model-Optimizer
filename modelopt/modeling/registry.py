@@ -13,32 +13,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Registry of per-model specs, queried by spec type.
+"""Registry that resolves a model sub-module to its spec.
 
 Model modules register their specs at import time (see ``models/``). Lookups return
 ``None`` when nothing matches, so callers can fall back to their default behavior.
 
-Matching is by class-name string only (see ``matching``), so this package stays
-dependency-free (any ``nn.Module`` — or any object — can be passed to the lookups
-without importing torch here).
+Matching is by class-name string only, so this package stays dependency-free (any
+``nn.Module`` — or any object — can be passed to the lookups without importing torch
+here).
 """
 
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, TypeVar
 
-from .base import ModelSpec
-from .export import ExportSpec
-from .matching import match_class_names
-from .moe import MoESpec
+from .specs import ExportSpec, ModelSpec, MoESpec, NormSpec
 
 if TYPE_CHECKING:
     import torch.nn as nn
 
 __all__ = [
+    "iter_gate_up_pairs",
     "iter_pqs_fuse_rules",
     "iter_specs",
+    "match_class_names",
     "match_moe_block",
     "register",
+    "weight_plus_one_norm_names",
 ]
 
 SpecT = TypeVar("SpecT", bound=ModelSpec)
@@ -59,6 +59,22 @@ def iter_specs(spec_cls: type[SpecT]) -> Iterator[SpecT]:
             yield spec
 
 
+def match_class_names(module, names: tuple[str, ...]) -> bool:
+    """Return True if any of ``names`` equals a class name in ``module``'s MRO.
+
+    Case-insensitive exact-name comparison against ``cls.__name__`` for every class
+    in ``type(module).__mro__`` — the same semantics as the export dispatch
+    registry's string keys (``modelopt.torch.export.registry``). Dynamically
+    generated quantized classes are subclasses of the original module class, so they
+    match through their base; exact-name comparison avoids substring false
+    positives. Comparison is case-insensitive because some registered names predate
+    this registry and their casing was never exercised by the legacy substring
+    matching.
+    """
+    mro_names = {cls.__name__.lower() for cls in type(module).__mro__}
+    return any(name.lower() in mro_names for name in names)
+
+
 def iter_pqs_fuse_rules():
     """Yield every ``(module_class_substrings, fuse_into, fuse_from)`` AWQ fusion rule.
 
@@ -69,12 +85,32 @@ def iter_pqs_fuse_rules():
         yield from spec.pqs_fuse_rules
 
 
+def iter_gate_up_pairs() -> Iterator[tuple[str, str]]:
+    """Yield the distinct (gate, up) expert-projection pairs across all MoE specs.
+
+    Deduplicated because consumers apply every pair opportunistically to every
+    iterable-experts module (getattr-guarded), matching the legacy engine behavior —
+    unknown models still benefit if their naming matches any registered pair.
+    """
+    seen = set()
+    for spec in iter_specs(MoESpec):
+        pair = spec.gate_up_pair
+        if pair is not None and pair not in seen:
+            seen.add(pair)
+            yield pair
+
+
+def weight_plus_one_norm_names() -> tuple[str, ...]:
+    """All norm class names whose stored weight is ``w - 1``, across all norm specs."""
+    return tuple(name for spec in iter_specs(NormSpec) for name in spec.weight_plus_one_norm_names)
+
+
 def match_moe_block(module: "nn.Module") -> MoESpec | None:
     """Return the MoE spec whose ``block_names`` matches ``module``.
 
     Case-insensitive exact-name match against the class names in ``module``'s MRO
-    (see ``matching.match_class_names``); quantized wrapper classes match through
-    their original base class.
+    (see ``match_class_names``); quantized wrapper classes match through their
+    original base class.
     """
     for spec in iter_specs(MoESpec):
         if match_class_names(module, spec.block_names):

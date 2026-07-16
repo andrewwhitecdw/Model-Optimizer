@@ -25,7 +25,7 @@ import torch
 import torch.nn as nn
 
 from modelopt import __version__
-from modelopt.modeling import iter_pqs_fuse_rules
+from modelopt.modeling import iter_pqs_fuse_rules, match_class_names, weight_plus_one_norm_names
 from modelopt.torch.quantization.model_calib import (
     enable_stats_collection,
     finish_stats_collection,
@@ -1231,10 +1231,9 @@ def fuse_prequant_to_linear(model: torch.nn.Module, fuse_grouped_heads=False):
 
 
 def _layernorm_uses_weight_plus_one(module: torch.nn.Module) -> bool:
-    if any(
-        name in type(module).__name__
-        for name in ["LayerNorm1P", "GemmaRMSNorm", "Gemma2RMSNorm", "Gemma3RMSNorm"]
-    ):
+    # Weight-plus-one norm class names are per-model data (NormSpec); the
+    # zero_centered_gamma attribute check is the structural fallback.
+    if match_class_names(module, weight_plus_one_norm_names()):
         return True
 
     return bool(hasattr(module, "zero_centered_gamma") and module.zero_centered_gamma)
