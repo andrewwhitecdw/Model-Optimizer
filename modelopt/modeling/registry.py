@@ -18,9 +18,9 @@
 Model modules register their specs at import time (see ``models/``). Lookups return
 ``None`` when nothing matches, so callers can fall back to their default behavior.
 
-Matching is by class-name string only, so this package stays dependency-free (any
-``nn.Module`` — or any object — can be passed to the lookups without importing torch
-here).
+Matching is by class-name string only (see ``matching``), so this package stays
+dependency-free (any ``nn.Module`` — or any object — can be passed to the lookups
+without importing torch here).
 """
 
 from collections.abc import Iterator
@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, TypeVar
 
 from .base import ModelSpec
 from .export import ExportSpec
+from .matching import match_class_names
 
 if TYPE_CHECKING:
     import torch.nn as nn
@@ -68,12 +69,13 @@ def iter_pqs_fuse_rules():
 
 
 def match_moe_block(module: "nn.Module") -> ExportSpec | None:
-    """Return the export spec matching ``module``'s class name against ``moe_block_names``.
+    """Return the export spec whose ``moe_block_names`` matches ``module``.
 
-    Case-insensitive substring match against ``type(module).__name__``.
+    Case-insensitive exact-name match against the class names in ``module``'s MRO
+    (see ``matching.match_class_names``); quantized wrapper classes match through
+    their original base class.
     """
-    cls_name = type(module).__name__.lower()
     for spec in iter_specs(ExportSpec):
-        if any(name.lower() in cls_name for name in spec.moe_block_names):
+        if match_class_names(module, spec.moe_block_names):
             return spec
     return None

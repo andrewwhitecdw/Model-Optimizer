@@ -33,8 +33,9 @@ class _FakeMoeLayer(nn.Module):
     """Name contains 'moelayer' — detected by naming convention."""
 
 
-class _FakeArcticMoe(nn.Module):
-    """Name contains 'arcticmoe' — detected by explicit match."""
+class ArcticMoE(nn.Module):
+    """Non-standard MoE block name — detected via the model spec registry (exact
+    MRO class name, so the fake must carry the real name)."""
 
 
 class _StructuralMoeModule(nn.Module):
@@ -64,7 +65,7 @@ class _PartialStructuralModule(nn.Module):
 
 @pytest.mark.parametrize(
     "module_cls",
-    [_FakeSparseMoeBlock, _FakeMoeLayer, _FakeArcticMoe],
+    [_FakeSparseMoeBlock, _FakeMoeLayer, ArcticMoE],
 )
 def test_is_moe_name_based(module_cls):
     assert is_moe(module_cls())

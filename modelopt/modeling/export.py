@@ -27,12 +27,13 @@ class ExportSpec(ModelSpec):
     """Per-model data for the unified HF export path.
 
     Resolved from a model sub-module via ``moe_block_names``, the matching key: MoE
-    block class-name substrings compared case-insensitively against
-    ``type(module).__name__`` (e.g. ``"Qwen3MoeSparseMoeBlock"``).
+    block class names (e.g. ``"Qwen3MoeSparseMoeBlock"``) compared case-insensitively
+    against the class names in the module's MRO (see ``matching.match_class_names``).
     """
 
     moe_block_names: tuple[str, ...] = ()
-    """Matching key: MoE block class-name substrings (case-insensitive)."""
+    """Matching key: MoE block class names, matched against the module's MRO
+    (case-insensitive exact names, not substrings)."""
 
     expert_linear_names: tuple[str, ...] | None = None
     """Expert linear projection names, e.g. ``("gate_proj", "down_proj", "up_proj")``."""

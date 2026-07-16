@@ -22,28 +22,32 @@ from modelopt.modeling import iter_pqs_fuse_rules, match_moe_block
 from modelopt.torch.export.layer_utils import get_expert_linear_names, get_experts_list, is_moe
 
 
-class _FakeQwen3MoeSparseMoeBlock(nn.Module):
+class Qwen3MoeSparseMoeBlock(nn.Module):
     pass
 
 
-class _QuantMixtralSparseMoeBlock(nn.Module):
-    """Dynamically generated quantized classes keep the family name as a substring."""
+class MixtralSparseMoeBlock(nn.Module):
+    pass
+
+
+class QuantMixtralSparseMoeBlock(MixtralSparseMoeBlock):
+    """Quantized classes subclass the original module class; matching goes through the MRO."""
 
 
 class _UnknownMoeBlock(nn.Module):
     pass
 
 
-def test_match_moe_block_by_substring():
-    spec = match_moe_block(_FakeQwen3MoeSparseMoeBlock())
+def test_match_moe_block_by_class_name():
+    spec = match_moe_block(Qwen3MoeSparseMoeBlock())
     assert spec is not None
     assert spec.model_type == "qwen3_moe"
     assert spec.expert_linear_names == ("gate_proj", "down_proj", "up_proj")
     assert spec.has_iterable_experts
 
 
-def test_match_moe_block_matches_quantized_class_name():
-    spec = match_moe_block(_QuantMixtralSparseMoeBlock())
+def test_match_moe_block_matches_quantized_class_via_mro():
+    spec = match_moe_block(QuantMixtralSparseMoeBlock())
     assert spec is not None
     assert spec.model_type == "mixtral"
 
@@ -57,7 +61,7 @@ def test_get_expert_linear_names_falls_back_when_unmatched():
     assert get_expert_linear_names(_UnknownMoeBlock()) == ["w1", "w2", "w3"]
 
 
-class _FakeNemotronHMOE(nn.Module):
+class NemotronHMOE(nn.Module):
     def __init__(self):
         super().__init__()
 
@@ -71,7 +75,7 @@ class _FakeNemotronHMOE(nn.Module):
 
 
 def test_get_experts_list_groups_by_spec_linear_names():
-    module = _FakeNemotronHMOE()
+    module = NemotronHMOE()
     groups = get_experts_list(module, "nemotronhforcausallm")
     assert len(groups) == 2  # up_proj group + down_proj group
     assert all(len(group) == 3 for group in groups)
@@ -82,32 +86,41 @@ def test_get_experts_list_groups_by_spec_linear_names():
 def test_get_experts_list_rejects_non_iterable_layouts():
     # DBRX matches a spec but is not an iterable-experts layout; grouped export
     # must keep rejecting it (legacy behavior).
-    class _FakeDBRXMoeSparseMoeBlock(nn.Module):
+    class DBRXMoeSparseMoeBlock(nn.Module):
         def __init__(self):
             super().__init__()
             self.experts = nn.ModuleList()
 
     with pytest.raises(NotImplementedError):
-        get_experts_list(_FakeDBRXMoeSparseMoeBlock(), "dbrxforcausallm")
+        get_experts_list(DBRXMoeSparseMoeBlock(), "dbrxforcausallm")
 
     with pytest.raises(NotImplementedError):
         get_experts_list(_UnknownMoeBlock(), "unknownforcausallm")
 
 
-class _FakeArcticMoE(nn.Module):
+class ArcticMoE(nn.Module):
     pass
 
 
-class _FakeDbrxFFN(nn.Module):
+class DbrxFFN(nn.Module):
     pass
 
 
 def test_is_moe_matches_registered_non_standard_names():
     # Non-standard MoE block names (no *SparseMoeBlock suffix, no router/experts
     # attributes) resolve through the model spec registry.
-    assert is_moe(_FakeArcticMoE())
-    assert is_moe(_FakeDbrxFFN())
+    assert is_moe(ArcticMoE())
+    assert is_moe(DbrxFFN())
     assert not is_moe(_UnknownMoeBlock())
+
+
+def test_match_is_exact_name_not_substring():
+    # A class whose name merely CONTAINS a registered name must not match; only
+    # exact MRO class names do (quantized wrappers match via their base class).
+    class MyArcticMoEWrapper(nn.Module):
+        pass
+
+    assert match_moe_block(MyArcticMoEWrapper()) is None
 
 
 def test_pqs_fuse_rules_match_legacy_mapping():
