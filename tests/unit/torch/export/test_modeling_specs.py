@@ -21,7 +21,6 @@ import torch.nn as nn
 from modelopt.modeling import (
     ModelSpec,
     MoEVariant,
-    collect_model_types,
     iter_gate_up_pairs,
     iter_pqs_fuse_rules,
     match_moe_block,
@@ -75,15 +74,15 @@ def test_get_expert_linear_names_raises_when_unmatched():
     # instead of guessing another model's naming (the legacy w1/w2/w3 default was
     # removed).
     with pytest.raises(NotImplementedError, match="expert linear names"):
-        get_expert_linear_names(_UnknownMoeBlock(), {"some_unknown_model"})
+        get_expert_linear_names(_UnknownMoeBlock(), "some_unknown_model")
 
 
 def test_get_expert_linear_names_from_specs():
     # Arctic keeps the w1/w2/w3 naming it previously got from the engine default.
-    assert get_expert_linear_names(_UnknownMoeBlock(), {"arctic"}) == ["w1", "w2", "w3"]
+    assert get_expert_linear_names(_UnknownMoeBlock(), "arctic") == ["w1", "w2", "w3"]
     # DBRX resolves the quantized per-expert ModuleList names (previously it fell
     # through to the w1/w2/w3 default, which never existed on the quantized module).
-    assert get_expert_linear_names(_UnknownMoeBlock(), {"dbrx"}) == [
+    assert get_expert_linear_names(_UnknownMoeBlock(), "dbrx") == [
         "w1_linear",
         "w2_linear",
         "v1_linear",
@@ -105,7 +104,7 @@ class NemotronHMOE(nn.Module):
 
 def test_get_experts_list_groups_by_spec_linear_names():
     module = NemotronHMOE()
-    groups = get_experts_list(module, {"nemotron_h"})
+    groups = get_experts_list(module, "nemotron_h")
     assert len(groups) == 2  # up_proj group + down_proj group
     assert all(len(group) == 3 for group in groups)
     assert groups[0][0] is module.experts[0].up_proj
@@ -121,10 +120,10 @@ def test_get_experts_list_rejects_non_iterable_layouts():
             self.experts = nn.ModuleList()
 
     with pytest.raises(NotImplementedError):
-        get_experts_list(DbrxFFN(), {"dbrx"})
+        get_experts_list(DbrxFFN(), "dbrx")
 
     with pytest.raises(NotImplementedError):
-        get_experts_list(_UnknownMoeBlock(), {"some_unknown_model"})
+        get_experts_list(_UnknownMoeBlock(), "some_unknown_model")
 
 
 class ArcticMoE(nn.Module):
@@ -249,15 +248,6 @@ def test_sync_moe_gate_up_amax_warns_on_unmatched_block():
         assert sync_moe_gate_up_amax(model) == 0
 
 
-def test_collect_model_types_walks_sub_configs():
-    from types import SimpleNamespace
-
-    text_config = SimpleNamespace(model_type="kimi_k2")
-    config = SimpleNamespace(model_type="kimi_vl", text_config=text_config, hidden_size=4096)
-    assert collect_model_types(config) == {"kimi_vl", "kimi_k2"}
-    assert collect_model_types(None) == set()
-
-
 def test_match_moe_block_scope_prefers_own_model_type():
     class Qwen3MoeSparseMoeBlock(nn.Module):
         pass
@@ -271,8 +261,8 @@ def test_match_moe_block_scope_prefers_own_model_type():
     fork_spec = ModelSpec(model_type="zz_fork", moe_variants=(fork_variant,))
     _SPECS[fork_spec.model_type] = fork_spec
     try:
-        assert match_moe_block(Qwen3MoeSparseMoeBlock(), {"zz_fork"}) is fork_variant
-        assert match_moe_block(Qwen3MoeSparseMoeBlock(), {"qwen3_moe"}).expert_linear_names == (
+        assert match_moe_block(Qwen3MoeSparseMoeBlock(), "zz_fork") is fork_variant
+        assert match_moe_block(Qwen3MoeSparseMoeBlock(), "qwen3_moe").expert_linear_names == (
             "gate_proj",
             "down_proj",
             "up_proj",
@@ -294,7 +284,7 @@ def test_match_moe_block_scope_is_strict():
     # A model whose model_type has no spec resolves to None even when its module
     # class name coincides with another model's — register a spec instead of
     # inheriting a neighbor's data.
-    assert match_moe_block(Qwen3MoeSparseMoeBlock(), {"some_unknown_vlm"}) is None
+    assert match_moe_block(Qwen3MoeSparseMoeBlock(), "some_unknown_vlm") is None
     # No scope (no config available) searches all specs.
     assert match_moe_block(Qwen3MoeSparseMoeBlock()) is not None
 
@@ -302,23 +292,38 @@ def test_match_moe_block_scope_is_strict():
 def test_get_expert_linear_names_by_model_type_only():
     # With a scope, naming resolves from the model's own spec — the block class
     # name is irrelevant (a spec need not declare block_names to provide naming).
-    assert get_expert_linear_names(_UnknownMoeBlock(), {"qwen3_moe"}) == [
+    assert get_expert_linear_names(_UnknownMoeBlock(), "qwen3_moe") == [
         "gate_proj",
         "down_proj",
         "up_proj",
     ]
-    with pytest.raises(NotImplementedError, match="model types"):
-        get_expert_linear_names(_UnknownMoeBlock(), {"some_unknown_vlm"})
+    with pytest.raises(NotImplementedError, match="model type"):
+        get_expert_linear_names(_UnknownMoeBlock(), "some_unknown_vlm")
 
 
 def test_mixtral_variants_disambiguated_by_block_class():
     class MixtralMoeSparseMoeBlock(nn.Module):
         """Legacy-naming Mixtral layout — same model type, different projections."""
 
-    assert get_expert_linear_names(MixtralMoeSparseMoeBlock(), {"mixtral"}) == [
+    assert get_expert_linear_names(MixtralMoeSparseMoeBlock(), "mixtral") == [
         "linear_fc1",
         "linear_fc2",
     ]
     # An unrecognized block class under a multi-naming model type cannot resolve.
     with pytest.raises(NotImplementedError):
-        get_expert_linear_names(_UnknownMoeBlock(), {"mixtral"})
+        get_expert_linear_names(_UnknownMoeBlock(), "mixtral")
+
+
+def test_gemma4_both_root_types_resolve():
+    # A gemma4 VLM's root model_type is gemma4; a text-only checkpoint's is
+    # gemma4_text (gemma3 precedent). Both register the same layout.
+    assert get_expert_linear_names(_UnknownMoeBlock(), "gemma4") == [
+        "gate_proj",
+        "down_proj",
+        "up_proj",
+    ]
+    assert get_expert_linear_names(_UnknownMoeBlock(), "gemma4_text") == [
+        "gate_proj",
+        "down_proj",
+        "up_proj",
+    ]

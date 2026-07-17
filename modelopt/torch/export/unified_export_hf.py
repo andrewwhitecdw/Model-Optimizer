@@ -30,8 +30,6 @@ import torch.nn as nn
 from safetensors import safe_open
 from safetensors.torch import save_file
 
-from modelopt.modeling import collect_model_types
-
 from .diffusers_utils import build_layerwise_quant_metadata, pad_nvfp4_weights, swizzle_nvfp4_scales
 
 try:
@@ -432,7 +430,7 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
     # TODO: Handle DBRX MoE
     quantization_format = get_quantization_format(model)
     model_type = type(model).__name__.lower()
-    model_types = collect_model_types(getattr(model, "config", None))
+    hf_model_type = getattr(getattr(model, "config", None), "model_type", None)
     module_names = set()
 
     # NVFP4 SVDQuant does not need pre-quant scale fusion (either into previous linear or layernorm) because
@@ -448,12 +446,12 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
         module_names.add(name)
 
         # For MoE models update pre_quant_scale to average pre_quant_scale amongst experts
-        if is_moe(module, model_types) and (
+        if is_moe(module, hf_model_type) and (
             quantization_format is not QUANTIZATION_NONE
             and ("awq" in quantization_format or quantization_format == QUANTIZATION_NVFP4_SVDQUANT)
         ):
             # update_experts_avg_prequant_scale(module)
-            grouped_experts = get_experts_list(module, model_types)
+            grouped_experts = get_experts_list(module, hf_model_type)
             for modules in grouped_experts:
                 with fsdp2_aware_weight_update(model, modules):
                     preprocess_linear_fusion(modules, resmooth_only=True)
@@ -804,7 +802,7 @@ def _process_quantized_modules(
         model=model,
         dtype=dtype,
         is_modelopt_qlora=is_modelopt_qlora,
-        model_types=collect_model_types(getattr(model, "config", None)),
+        model_type=getattr(getattr(model, "config", None), "model_type", None),
     )
     fsdp_module_to_reshard = None
 
@@ -870,10 +868,10 @@ def _export_transformers_checkpoint(
         model=model,
         dtype=dtype,
         is_modelopt_qlora=is_modelopt_qlora,
-        model_types=collect_model_types(getattr(model, "config", None)),
+        model_type=getattr(getattr(model, "config", None), "model_type", None),
     )
     for name, sub_module in model.named_modules():
-        if is_moe(sub_module, prepare_ctx.model_types) and hasattr(sub_module, "experts"):
+        if is_moe(sub_module, prepare_ctx.model_type) and hasattr(sub_module, "experts"):
             handler = PrepareMoEInputsRegistry.match(sub_module.experts)
             if handler is None:
                 # Unsupported MoE model structure

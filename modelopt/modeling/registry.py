@@ -33,7 +33,6 @@ if TYPE_CHECKING:
     import torch.nn as nn
 
 __all__ = [
-    "collect_model_types",
     "get_spec",
     "get_specs",
     "iter_gate_up_pairs",
@@ -59,16 +58,9 @@ def get_spec(model_type: str) -> ModelSpec | None:
     return _SPECS.get(model_type)
 
 
-def get_specs(model_types: set[str] | None = None) -> list[ModelSpec]:
-    """Return registered specs, in registration order.
-
-    This is the model_type index: with ``model_types`` (from
-    ``collect_model_types(model.config)``), only the specs belonging to the model's
-    own model types are returned, so consumers resolve per-model data without
-    scanning the registry. Without it, all specs are returned (aggregators,
-    no-config compatibility).
-    """
-    return [spec for spec in _SPECS.values() if not model_types or spec.model_type in model_types]
+def get_specs() -> list[ModelSpec]:
+    """Return all registered specs, in registration order (aggregators, tests)."""
+    return list(_SPECS.values())
 
 
 def iter_pqs_fuse_rules():
@@ -107,50 +99,26 @@ def weight_plus_one_norm_names() -> tuple[str, ...]:
     return tuple(name for spec in get_specs() for name in spec.weight_plus_one_norm_names)
 
 
-def collect_model_types(config) -> set[str]:
-    """Collect every HF model type in a config tree (root plus nested sub-configs).
-
-    Walks attribute values duck-typed as configs (anything exposing a string
-    ``model_type``), so composite models contribute their tower types too — e.g. a
-    VLM yields ``{"kimi_vl", "kimi_k2"}`` via ``config.text_config`` — without this
-    package importing transformers. Pass ``model.config``; ``None`` yields an empty
-    set.
-    """
-    found: set[str] = set()
-    seen: set[int] = set()
-
-    def _walk(cfg) -> None:
-        if id(cfg) in seen:
-            return
-        seen.add(id(cfg))
-        model_type = getattr(cfg, "model_type", None)
-        if isinstance(model_type, str) and model_type:
-            found.add(model_type)
-        for value in vars(cfg).values():
-            if isinstance(getattr(value, "model_type", None), str):
-                _walk(value)
-
-    if config is not None:
-        _walk(config)
-    return found
-
-
-def match_moe_block(module: "nn.Module", model_types: set[str] | None = None) -> MoEVariant | None:
+def match_moe_block(module: "nn.Module", model_type: str | None = None) -> MoEVariant | None:
     """Return the MoE layout variant for ``module``, resolved by model type.
 
-    ``model_types`` (from ``collect_model_types(model.config)``: root plus
-    sub-config types, so VLM towers are covered) is a strict filter: only specs
-    registered under the model's own model types are considered. A model whose
+    ``model_type`` is the model's root HF type (``model.config.model_type``) and is
+    a strict filter: only that model's own spec is consulted. A model whose
     model_type has no spec resolves to ``None`` even if its module class names
     coincide with another model's — register a spec instead of inheriting a
-    neighbor's data. ``None`` or an empty set (no config available: unit tests,
-    the TRT-LLM path) searches all specs.
+    neighbor's data. ``None`` (no config available: unit tests, the TRT-LLM path)
+    searches all specs. Sub-model types of composite models are not walked today;
+    a composite whose MoE lives under a tower type registers the root type too
+    (see ``gemma4.py``).
 
-    Within the scope, each spec's variant ``block_names`` identifies the block and
-    disambiguates same-model layout variants (``MoESpec.match_moe_variant``);
-    quantized wrapper classes match through their original base class in the MRO.
+    Within the spec, variant ``block_names`` identifies the block and disambiguates
+    same-model layout variants (``MoESpec.match_moe_variant``); quantized wrapper
+    classes match through their original base class in the MRO.
     """
-    for spec in get_specs(model_types):
+    if model_type:
+        spec = get_spec(model_type)
+        return spec.match_moe_variant(module) if spec is not None else None
+    for spec in get_specs():
         variant = spec.match_moe_variant(module)
         if variant is not None:
             return variant

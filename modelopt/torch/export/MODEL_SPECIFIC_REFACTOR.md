@@ -72,20 +72,22 @@ Model type names mirror
 Each model registers exactly ONE `ModelSpec` (registry enforces uniqueness), so
 `get_spec(model_type)` is a dict lookup and consumers call methods directly on the
 global spec (e.g. `spec.expert_linear_names_for(module)`).
-Resolution is by model type first, mirroring HF's own indexing: the engine
-collects the model's HF model types once per export
-(`collect_model_types(model.config)` — root plus sub-configs, so VLM towers
-contribute e.g. `kimi_k2` explicitly) and passes them down. The scope is strict:
-only the model's own specs are consulted, so a model whose model_type has no spec
-fails loudly (register a spec) instead of inheriting a neighbor's data through a
-coincidental class-name match. Within the scope, each `MoESpec` nests one
+Resolution is by model type, mirroring HF's own indexing: the engine reads the
+model's root HF type (`model.config.model_type`) once per export and passes it
+down. The lookup is strict: only the model's own spec is consulted, so a model
+whose model_type has no spec fails loudly (register a spec) instead of inheriting
+a neighbor's data through a coincidental class-name match. Sub-config model types
+of composite models are not walked today — a composite whose MoE lives under a
+tower type registers the root type too (`gemma4` + `gemma4_text`, following the
+`gemma3`/`gemma3_text` precedent); a recursive config walk is a future extension
+if a real VLM tower needs it. Within the spec, each `MoESpec` nests one
 `MoEVariant` per concrete block layout — several when the same checkpoint
 materializes with different classes and projection names (Mixtral across
 transformers generations); variant `block_names` (matched against the module
 MRO) identify MoE blocks (`is_moe`) and pick the variant.
 `get_expert_linear_names` doesn't need the block class at all when a model's
-variants agree on one naming. Without a scope (no config available: unit tests,
-the TRT-LLM path), lookups search all specs by class name.
+variants agree on one naming. Without a model type (no config available: unit
+tests, the TRT-LLM path), lookups search all specs by class name.
 
 During migration, call sites kept the legacy branches as a fallback behind the
 spec lookup. Once the specs covered every family the legacy chains served, the

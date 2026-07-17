@@ -54,10 +54,10 @@ class ExportContext:
     model: nn.Module
     dtype: torch.dtype
     is_modelopt_qlora: bool = False
-    model_types: set[str] = field(default_factory=set)
-    """The model's HF model types (root + sub-configs, via ``collect_model_types``),
-    used to resolve per-model specs in ``modelopt.modeling``. Empty means unknown:
-    spec lookups then fail loudly instead of guessing."""
+    model_type: str | None = None
+    """The model's HF model type (``model.config.model_type``), used to resolve the
+    model's spec in ``modelopt.modeling``. ``None`` means unknown: spec lookups then
+    fail loudly instead of guessing."""
     tied_cache: dict[int, nn.Module] = field(default_factory=dict)
     moe_tied_cache: dict[tuple[int, int], nn.Module] = field(default_factory=dict)
 

@@ -18,17 +18,18 @@
 from ..registry import register
 from ..specs import ModelSpec, MoEVariant
 
-register(
-    ModelSpec(
-        model_type="gemma4",
-        moe_variants=(
-            MoEVariant(
-                # Gemma4 MoE experts are unfused into per-expert nn.Linear layers.
-                block_names=("Gemma4TextDecoderLayer",),
-                expert_linear_names=("gate_proj", "down_proj", "up_proj"),
-                gate_up_pair=("gate_proj", "up_proj"),
-                has_iterable_experts=True,
-            ),
-        ),
-    )
+# Gemma4 MoE experts are unfused into per-expert nn.Linear layers. The MoE block
+# lives in the text model, so the same layout is registered for both the VLM root
+# type and the text type (a text-only checkpoint's root model_type is
+# ``gemma4_text``, following the gemma3 precedent).
+_GEMMA4_MOE_VARIANTS = (
+    MoEVariant(
+        block_names=("Gemma4TextDecoderLayer",),
+        expert_linear_names=("gate_proj", "down_proj", "up_proj"),
+        gate_up_pair=("gate_proj", "up_proj"),
+        has_iterable_experts=True,
+    ),
 )
+
+register(ModelSpec(model_type="gemma4", moe_variants=_GEMMA4_MOE_VARIANTS))
+register(ModelSpec(model_type="gemma4_text", moe_variants=_GEMMA4_MOE_VARIANTS))
