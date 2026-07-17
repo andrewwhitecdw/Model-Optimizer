@@ -13,18 +13,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Nemotron specs (HF model type ``nemotron``); Nemotron-H lives in ``nemotron_h.py``."""
+"""Snowflake Arctic specs (trust-remote-code model type ``arctic``)."""
 
-from ..registry import register
-from ..specs import ModelSpec
+from .registry import register
+from .specs import ModelSpec, MoEVariant
 
-# LayerNorm1P stores weight - 1 (zero-centered gamma). Both the plain Megatron-style
-# class name and the HF Nemotron port are listed; modules exposing a
-# ``zero_centered_gamma`` attribute are additionally caught by the engine's
-# structural fallback.
 register(
     ModelSpec(
-        model_type="nemotron",
-        weight_plus_one_norm_names=("LayerNorm1P", "NemotronLayerNorm1P"),
+        model_type="arctic",
+        moe_variants=(
+            MoEVariant(
+                # Non-standard block name (for is_moe identification).
+                block_names=("ArcticMoE",),
+                # ArcticMLP experts use Mixtral-style w1/w2/w3 naming (previously served by
+                # the engine's implicit w1/w2/w3 default, now declared explicitly).
+                expert_linear_names=("w1", "w2", "w3"),
+                gate_up_pair=("w1", "w3"),
+            ),
+        ),
     )
 )

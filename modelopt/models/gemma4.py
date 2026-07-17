@@ -15,8 +15,8 @@
 
 """Gemma4 specs (HF model type ``gemma4``)."""
 
-from ..registry import register
-from ..specs import ModelSpec, MoEVariant
+from .registry import register
+from .specs import ModelSpec, MoEVariant
 
 # Gemma4 MoE experts are unfused into per-expert nn.Linear layers. The MoE block
 # lives in the text model, so the same layout is registered for both the VLM root

@@ -13,22 +13,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Snowflake Arctic specs (trust-remote-code model type ``arctic``)."""
+"""Mixtral specs (HF model type ``mixtral``)."""
 
-from ..registry import register
-from ..specs import ModelSpec, MoEVariant
+from .registry import register
+from .specs import ModelSpec, MoEVariant
 
+# Mixtral with iterable experts uses w1/w2/w3. Fused experts (transformers 5.0+) are
+# detected from their per-expert quantizer attributes and need no naming override here.
 register(
     ModelSpec(
-        model_type="arctic",
+        model_type="mixtral",
         moe_variants=(
             MoEVariant(
-                # Non-standard block name (for is_moe identification).
-                block_names=("ArcticMoE",),
-                # ArcticMLP experts use Mixtral-style w1/w2/w3 naming (previously served by
-                # the engine's implicit w1/w2/w3 default, now declared explicitly).
+                block_names=("MixtralSparseMoeBlock",),
                 expert_linear_names=("w1", "w2", "w3"),
+                has_iterable_experts=True,
+                # w1 = gate, w3 = up, w2 = down (Mixtral convention).
                 gate_up_pair=("w1", "w3"),
+            ),
+            # Legacy-naming layout kept from the legacy engine chain: same model
+            # type, different block class and projection names.
+            MoEVariant(
+                block_names=("MixtralMoeSparseMoeBlock",),
+                expert_linear_names=("linear_fc1", "linear_fc2"),
             ),
         ),
     )

@@ -13,18 +13,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Qwen3 (dense) specs (HF model type ``qwen3``)."""
+"""Qwen2-MoE specs (HF model type ``qwen2_moe``)."""
 
-from ..registry import register
-from ..specs import ModelSpec
+from .registry import register
+from .specs import ModelSpec, MoEVariant
 
 register(
     ModelSpec(
-        model_type="qwen3",
-        # AWQ pre_quant_scale fusion: fold o_proj into v_proj, down_proj into up_proj.
-        pqs_fuse_rules=(
-            (("Qwen3Attention",), "v_proj", "o_proj"),
-            (("Qwen3MLP",), "up_proj", "down_proj"),
+        model_type="qwen2_moe",
+        moe_variants=(
+            MoEVariant(
+                block_names=("Qwen2MoeSparseMoeBlock",),
+                expert_linear_names=("gate_proj", "down_proj", "up_proj"),
+                gate_up_pair=("gate_proj", "up_proj"),
+                has_iterable_experts=True,
+            ),
         ),
     )
 )

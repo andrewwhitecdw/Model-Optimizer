@@ -13,27 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Per-model specs, one module per HF model type. Importing each module registers its specs.
+"""Qwen3 (dense) specs (HF model type ``qwen3``)."""
 
-Module names follow the HF ``transformers.models`` layout
-(https://github.com/huggingface/transformers/tree/main/src/transformers/models);
-trust-remote-code models (``arctic``, ``deepseek``) use their config ``model_type``.
-"""
+from .registry import register
+from .specs import ModelSpec
 
-from . import (
-    arctic,
-    dbrx,
-    deepseek,
-    gemma,
-    gemma4,
-    gpt_oss,
-    llama,
-    mixtral,
-    nemotron,
-    nemotron_h,
-    qwen2_moe,
-    qwen3,
-    qwen3_5_moe,
-    qwen3_moe,
-    qwen3_next,
+register(
+    ModelSpec(
+        model_type="qwen3",
+        # AWQ pre_quant_scale fusion: fold o_proj into v_proj, down_proj into up_proj.
+        pqs_fuse_rules=(
+            (("Qwen3Attention",), "v_proj", "o_proj"),
+            (("Qwen3MLP",), "up_proj", "down_proj"),
+        ),
+    )
 )

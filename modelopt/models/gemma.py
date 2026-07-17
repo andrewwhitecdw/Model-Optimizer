@@ -19,8 +19,8 @@ Grouped in one module because each generation contributes the same single fact;
 Gemma4 has its own module (``gemma4.py``) for its MoE spec.
 """
 
-from ..registry import register
-from ..specs import ModelSpec
+from .registry import register
+from .specs import ModelSpec
 
 # Gemma RMSNorms store weight - 1 (the effective scale is weight + 1); scale-folding
 # engines (AWQ pre_quant_scale fusion into the norm) must account for the +1.

@@ -29,7 +29,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm
 
-from modelopt.modeling import iter_gate_up_pairs
+from modelopt.models import iter_gate_up_pairs
 from modelopt.torch.opt.config import ModeloptBaseConfig
 from modelopt.torch.opt.searcher import ForwardLoop
 from modelopt.torch.quantization.utils.layerwise_calib import (

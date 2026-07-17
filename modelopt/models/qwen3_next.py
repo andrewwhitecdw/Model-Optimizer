@@ -13,19 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Nemotron-H specs (HF model type ``nemotron_h``)."""
+"""Qwen3-Next specs (HF model type ``qwen3_next``)."""
 
-from ..registry import register
-from ..specs import ModelSpec, MoEVariant
+from .registry import register
+from .specs import ModelSpec, MoEVariant
 
 register(
     ModelSpec(
-        model_type="nemotron_h",
+        model_type="qwen3_next",
         moe_variants=(
             MoEVariant(
-                # NemotronHMOE experts (NemotronHMLP) use up_proj and down_proj only (no gate).
-                block_names=("NemotronHMOE",),
-                expert_linear_names=("up_proj", "down_proj"),
+                block_names=("Qwen3NextSparseMoeBlock",),
+                expert_linear_names=("gate_proj", "down_proj", "up_proj"),
+                gate_up_pair=("gate_proj", "up_proj"),
                 has_iterable_experts=True,
             ),
         ),

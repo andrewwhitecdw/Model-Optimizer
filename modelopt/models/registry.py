@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 __all__ = [
     "get_spec",
     "get_specs",
+    "hf_model_type",
     "iter_gate_up_pairs",
     "iter_pqs_fuse_rules",
     "match_moe_block",
@@ -97,6 +98,18 @@ def iter_gate_up_pairs() -> Iterator[tuple[str, str]]:
 def weight_plus_one_norm_names() -> tuple[str, ...]:
     """All norm class names whose stored weight is ``w - 1``, across all specs."""
     return tuple(name for spec in get_specs() for name in spec.weight_plus_one_norm_names)
+
+
+def hf_model_type(model) -> str | None:
+    """Return the root HF model type (``model.config.model_type``), or ``None``.
+
+    Accepts a model or a config object (duck-typed, no transformers import): a
+    model contributes via its ``config`` attribute, a config via its own
+    ``model_type``. This is the key for ``get_spec`` / ``match_moe_block``.
+    """
+    config = getattr(model, "config", model)
+    model_type = getattr(config, "model_type", None)
+    return model_type if isinstance(model_type, str) else None
 
 
 def match_moe_block(module: "nn.Module", model_type: str | None = None) -> MoEVariant | None:

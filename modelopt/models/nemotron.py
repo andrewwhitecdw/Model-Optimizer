@@ -13,21 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Qwen3-Next specs (HF model type ``qwen3_next``)."""
+"""Nemotron specs (HF model type ``nemotron``); Nemotron-H lives in ``nemotron_h.py``."""
 
-from ..registry import register
-from ..specs import ModelSpec, MoEVariant
+from .registry import register
+from .specs import ModelSpec
 
+# LayerNorm1P stores weight - 1 (zero-centered gamma). Both the plain Megatron-style
+# class name and the HF Nemotron port are listed; modules exposing a
+# ``zero_centered_gamma`` attribute are additionally caught by the engine's
+# structural fallback.
 register(
     ModelSpec(
-        model_type="qwen3_next",
-        moe_variants=(
-            MoEVariant(
-                block_names=("Qwen3NextSparseMoeBlock",),
-                expert_linear_names=("gate_proj", "down_proj", "up_proj"),
-                gate_up_pair=("gate_proj", "up_proj"),
-                has_iterable_experts=True,
-            ),
-        ),
+        model_type="nemotron",
+        weight_plus_one_norm_names=("LayerNorm1P", "NemotronLayerNorm1P"),
     )
 )

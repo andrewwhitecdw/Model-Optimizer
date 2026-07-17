@@ -13,24 +13,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""DBRX specs (HF model type ``dbrx``)."""
+"""Qwen3-MoE specs (HF model type ``qwen3_moe``)."""
 
-from ..registry import register
-from ..specs import ModelSpec, MoEVariant
+from .registry import register
+from .specs import ModelSpec, MoEVariant
 
-# HF DbrxFFN (non-standard block name, identified for is_moe). Expert names refer to
-# the quantized layout: _QuantDbrxExpertGLU converts the fused w1/v1/w2 parameters
-# into per-expert w1_linear/v1_linear/w2_linear ModuleLists on experts.mlp (see
-# modelopt/torch/quantization/plugins/huggingface.py), which is what the DBRX
-# prepare handler fills amax values on.
 register(
     ModelSpec(
-        model_type="dbrx",
+        model_type="qwen3_moe",
         moe_variants=(
             MoEVariant(
-                block_names=("DbrxFFN",),
-                expert_linear_names=("w1_linear", "w2_linear", "v1_linear"),
+                block_names=("Qwen3MoeSparseMoeBlock",),
+                expert_linear_names=("gate_proj", "down_proj", "up_proj"),
+                gate_up_pair=("gate_proj", "up_proj"),
+                has_iterable_experts=True,
             ),
+        ),
+        # AWQ pre_quant_scale fusion: fold o_proj into v_proj, down_proj into up_proj.
+        pqs_fuse_rules=(
+            (("Qwen3MoeAttention",), "v_proj", "o_proj"),
+            (("Qwen3MoeMLP",), "up_proj", "down_proj"),
         ),
     )
 )

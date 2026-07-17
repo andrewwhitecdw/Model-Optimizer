@@ -15,8 +15,8 @@
 
 """Llama specs (HF model type ``llama``)."""
 
-from ..registry import register
-from ..specs import ModelSpec
+from .registry import register
+from .specs import ModelSpec
 
 register(
     ModelSpec(

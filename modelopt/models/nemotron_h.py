@@ -13,27 +13,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""DeepSeek-MoE specs (trust-remote-code model type ``deepseek``).
+"""Nemotron-H specs (HF model type ``nemotron_h``)."""
 
-Matches the remote-code ``DeepseekMoE`` block, not the HF-native ``deepseek_v3``
-classes.
-"""
+from .registry import register
+from .specs import ModelSpec, MoEVariant
 
-from ..registry import register
-from ..specs import ModelSpec, MoEVariant
-
-# DeepseekMoE experts ARE structurally iterable (ModuleList of DeepseekMLP), but
-# has_iterable_experts stays False until the grouped export path (get_experts_list
-# resmoothing) is validated on this model — the flag currently doubles as that
-# support gate.
 register(
     ModelSpec(
-        model_type="deepseek",
+        model_type="nemotron_h",
         moe_variants=(
             MoEVariant(
-                block_names=("DeepseekMoE",),
-                expert_linear_names=("gate_proj", "down_proj", "up_proj"),
-                gate_up_pair=("gate_proj", "up_proj"),
+                # NemotronHMOE experts (NemotronHMLP) use up_proj and down_proj only (no gate).
+                block_names=("NemotronHMOE",),
+                expert_linear_names=("up_proj", "down_proj"),
+                has_iterable_experts=True,
             ),
         ),
     )

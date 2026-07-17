@@ -13,20 +13,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for the per-model spec registry (modelopt.modeling)."""
+"""Unit tests for the per-model spec registry (modelopt.models)."""
 
 import pytest
 import torch.nn as nn
 
-from modelopt.modeling import (
+from modelopt.models import (
     ModelSpec,
     MoEVariant,
+    hf_model_type,
     iter_gate_up_pairs,
     iter_pqs_fuse_rules,
     match_moe_block,
     weight_plus_one_norm_names,
 )
-from modelopt.modeling.registry import _SPECS
+from modelopt.models.registry import _SPECS
 from modelopt.torch.export.layer_utils import (
     get_expert_linear_names,
     get_experts_list,
@@ -327,3 +328,13 @@ def test_gemma4_both_root_types_resolve():
         "down_proj",
         "up_proj",
     ]
+
+
+def test_hf_model_type_accepts_model_or_config():
+    from types import SimpleNamespace
+
+    config = SimpleNamespace(model_type="qwen3_moe")
+    model = SimpleNamespace(config=config)
+    assert hf_model_type(model) == "qwen3_moe"
+    assert hf_model_type(config) == "qwen3_moe"
+    assert hf_model_type(SimpleNamespace()) is None

@@ -28,7 +28,7 @@ try:
 except Exception:
     warn("Cannot find transformers package. Hugginface modules cannot be exported.")
 
-from modelopt.modeling import get_spec, match_moe_block
+from modelopt.models import get_spec, hf_model_type, match_moe_block
 from modelopt.torch.utils import distributed as dist
 from modelopt.torch.utils import import_plugin
 
@@ -314,7 +314,7 @@ def is_moe(module: nn.Module, model_type: str | None = None) -> bool:
     # Auto-detect common MoE patterns
     if name.endswith("sparsemoeblock") or "moelayer" in name:
         return True
-    # Non-standard MoE block names are per-model data (modelopt/modeling/models/*).
+    # Non-standard MoE block names are per-model data (modelopt/models/*).
     if match_moe_block(module, model_type) is not None:
         return True
     # Structural detection: modules with router + experts (e.g. Gemma4TextDecoderLayer)
@@ -1004,7 +1004,7 @@ def get_expert_linear_names(module: nn.Module, model_type: str | None) -> list[s
     raise NotImplementedError(
         f"Cannot resolve expert linear names for MoE block {type(module).__name__!r} "
         f"(model type: {model_type!r}). Register a ModelSpec with moe_variants for "
-        "this model under modelopt/modeling/models/."
+        "this model under modelopt/models/."
     )
 
 
@@ -1189,7 +1189,7 @@ def sync_moe_gate_up_amax(model: nn.Module) -> int:
     Returns:
         Number of expert gate/up pairs whose amaxes were synced.
     """
-    model_type = getattr(getattr(model, "config", None), "model_type", None)
+    model_type = hf_model_type(model)
     synced = 0
     unmatched_block_names: set[str] = set()
     for _, sub_module in model.named_modules():
@@ -1243,7 +1243,7 @@ def sync_moe_gate_up_amax(model: nn.Module) -> int:
             f"MoE blocks {sorted(unmatched_block_names)} have no registered MoESpec; "
             "gate/up weight amax sync was skipped for them. If these models have "
             "gated experts with separate gate/up projections, register a MoESpec "
-            "with gate_up_pair under modelopt/modeling/models/ so the fused "
+            "with gate_up_pair under modelopt/models/ so the fused "
             "gate_up_proj weight scales stay consistent when serving."
         )
     return synced
