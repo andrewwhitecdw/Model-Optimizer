@@ -20,8 +20,8 @@ about a model type lives on a single instance, resolved by ``config.model_type``
 It is composed from section mixins so each concern stays a small, separate class:
 
 - **topic sections** hold architecture facts shared across subsystems (``MoESpec``:
-  what a model's MoE blocks are; ``NormSpec``: norm-layer conventions);
-- **subsystem sections** hold one subsystem's per-model policy (``ExportSpec``).
+  what a model's MoE blocks are);
+- **subsystem sections** hold one subsystem's per-model data (``ExportSpec``).
 
 Sections hold per-model data plus trivial accessors over that data; subsystem logic
 never lives here. A model registers exactly one ``ModelSpec`` in its sibling module,
@@ -35,7 +35,6 @@ __all__ = [
     "MoESpec",
     "MoEVariant",
     "ModelSpec",
-    "NormSpec",
     "match_class_names",
 ]
 
@@ -127,24 +126,11 @@ class MoESpec:
 
 
 @dataclass(kw_only=True)
-class NormSpec:
-    """Topic section: normalization-layer architecture facts."""
-
-    weight_plus_one_norm_names: tuple[str, ...] = ()
-    """Class names of norm layers whose stored weight is ``w - 1`` (the effective
-    scale is ``weight + 1``), e.g. Gemma's RMSNorm variants and LayerNorm1P.
-    Matched against a norm module's MRO (case-insensitive exact names). Engines
-    must account for the +1 when folding scales into the norm weight (AWQ
-    pre_quant_scale fusion). A structural fallback (``zero_centered_gamma``) stays
-    in the engine."""
-
-
-@dataclass(kw_only=True)
 class ExportSpec:
-    """Subsystem section: per-model policy of the unified HF export path.
+    """Subsystem section: per-model data of the unified HF export path.
 
     Architecture facts (MoE block classes, expert naming) live in ``MoESpec``; this
-    section holds decisions that belong to the export/quantization algorithms only.
+    section holds data consumed by the export algorithms only.
     """
 
     pqs_fuse_rules: tuple[tuple[tuple[str, ...], str, str], ...] = ()
@@ -155,9 +141,17 @@ class ExportSpec:
     A rule asserts mathematical equivalence for that model's modules, so it is
     declared per model rather than applied generically."""
 
+    weight_plus_one_norm_names: tuple[str, ...] = ()
+    """Class names of norm layers whose stored weight is ``w - 1`` (the effective
+    scale is ``weight + 1``), e.g. Gemma's RMSNorm variants and LayerNorm1P.
+    Matched against a norm module's MRO (case-insensitive exact names). Export
+    must account for the +1 when folding scales into the norm weight (AWQ
+    pre_quant_scale fusion). A structural fallback (``zero_centered_gamma``) stays
+    in the engine."""
+
 
 @dataclass(kw_only=True)
-class ModelSpec(MoESpec, NormSpec, ExportSpec):
+class ModelSpec(MoESpec, ExportSpec):
     """The one global per-model descriptor, composed from the section mixins.
 
     Resolved by HF model type (see ``registry.get_spec``); a model registers exactly

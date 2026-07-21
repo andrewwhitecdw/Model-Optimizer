@@ -1231,7 +1231,7 @@ def fuse_prequant_to_linear(model: torch.nn.Module, fuse_grouped_heads=False):
 
 
 def _layernorm_uses_weight_plus_one(module: torch.nn.Module) -> bool:
-    # Weight-plus-one norm class names are per-model data (NormSpec); the
+    # Weight-plus-one norm class names are per-model data (ExportSpec); the
     # zero_centered_gamma attribute check is the structural fallback.
     if match_class_names(module, list_all_possible("weight_plus_one_norm_names")):
         return True
