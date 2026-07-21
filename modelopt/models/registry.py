@@ -21,6 +21,8 @@ or fall back per their own policy. Matching is by model-type and class-name stri
 only, so this package needs no torch import.
 """
 
+import functools
+from dataclasses import fields
 from typing import TYPE_CHECKING
 
 from .specs import ModelSpec, MoEVariant
@@ -58,6 +60,15 @@ def get_specs() -> list[ModelSpec]:
     return list(_SPECS.values())
 
 
+@functools.cache
+def _spec_attr_names() -> frozenset[str]:
+    """All ``ModelSpec`` field and property names."""
+    names = {f.name for f in fields(ModelSpec)}
+    for klass in ModelSpec.__mro__:
+        names.update(name for name, attr in vars(klass).items() if isinstance(attr, property))
+    return frozenset(names)
+
+
 def list_all_possible(attr: str) -> tuple:
     """List a spec attribute's values across all registered specs, deduplicated in order.
 
@@ -66,6 +77,10 @@ def list_all_possible(attr: str) -> tuple:
     affects all models the consumer walks — prefer ``get_spec(model_type)`` /
     ``match_moe_block`` wherever the owning model is identifiable.
     """
+    if attr not in _spec_attr_names():
+        raise ValueError(
+            f"{attr!r} is not a ModelSpec attribute; available: {sorted(_spec_attr_names())}"
+        )
     return tuple(dict.fromkeys(item for spec in get_specs() for item in getattr(spec, attr)))
 
 

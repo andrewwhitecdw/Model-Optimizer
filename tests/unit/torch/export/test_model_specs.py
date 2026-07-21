@@ -168,6 +168,11 @@ def test_gate_up_pairs_match_legacy():
     assert set(list_all_possible("gate_up_pairs")) == {("gate_proj", "up_proj"), ("w1", "w3")}
 
 
+def test_list_all_possible_rejects_unknown_attr():
+    with pytest.raises(ValueError, match="not a ModelSpec attribute"):
+        list_all_possible("no_such_field")
+
+
 def test_weight_plus_one_norm_names_cover_legacy():
     names = set(list_all_possible("weight_plus_one_norm_names"))
     assert {"GemmaRMSNorm", "Gemma2RMSNorm", "Gemma3RMSNorm", "LayerNorm1P"} <= names
