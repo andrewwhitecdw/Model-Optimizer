@@ -25,7 +25,7 @@ import torch
 import torch.nn as nn
 
 from modelopt import __version__
-from modelopt.models import iter_pqs_fuse_rules, match_class_names, weight_plus_one_norm_names
+from modelopt.models import collect, match_class_names
 from modelopt.torch.quantization.model_calib import (
     enable_stats_collection,
     finish_stats_collection,
@@ -1151,7 +1151,7 @@ def _update_svdquant(modules, new_pre_quant_scale):
 #   - MLP: fold down_proj's pre_quant_scale into up_proj's output dimension.
 #       Before: down_proj_out = {[act_fn(gate_proj(x)) * up_proj(x)] * scale} @ down_proj.W^T
 #       After:  down_proj_out = {[act_fn(gate_proj(x)) * (up_proj(x) * scale)]} @ down_proj.W^T
-# Each rule is (module_class_substrings, fuse_into, fuse_from); see ``iter_pqs_fuse_rules``.
+# Each rule is a (module_class_substrings, fuse_into, fuse_from) triple.
 
 
 def fuse_prequant_to_linear(model: torch.nn.Module, fuse_grouped_heads=False):
@@ -1167,7 +1167,7 @@ def fuse_prequant_to_linear(model: torch.nn.Module, fuse_grouped_heads=False):
     """
     # Fuse pre_quant_scale to the linear weights
     for _, module in model.named_modules():
-        for target_module_list, fuse_into, fuse_from in iter_pqs_fuse_rules():
+        for target_module_list, fuse_into, fuse_from in collect(lambda spec: spec.pqs_fuse_rules):
             if any(module_name in type(module).__name__ for module_name in target_module_list):
                 linear_fuse_into = module.get_submodule(fuse_into)
                 linear_pqs_from = module.get_submodule(fuse_from)
@@ -1233,7 +1233,7 @@ def fuse_prequant_to_linear(model: torch.nn.Module, fuse_grouped_heads=False):
 def _layernorm_uses_weight_plus_one(module: torch.nn.Module) -> bool:
     # Weight-plus-one norm class names are per-model data (NormSpec); the
     # zero_centered_gamma attribute check is the structural fallback.
-    if match_class_names(module, weight_plus_one_norm_names()):
+    if match_class_names(module, collect(lambda spec: spec.weight_plus_one_norm_names)):
         return True
 
     return bool(hasattr(module, "zero_centered_gamma") and module.zero_centered_gamma)

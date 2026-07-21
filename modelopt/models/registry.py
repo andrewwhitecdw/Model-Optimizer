@@ -21,8 +21,8 @@ or fall back per their own policy. Matching is by model-type and class-name stri
 only, so this package needs no torch import.
 """
 
-from collections.abc import Iterator
-from typing import TYPE_CHECKING
+from collections.abc import Callable, Iterable
+from typing import TYPE_CHECKING, TypeVar
 
 from .specs import ModelSpec, MoEVariant
 
@@ -30,15 +30,15 @@ if TYPE_CHECKING:
     import torch.nn as nn
 
 __all__ = [
+    "collect",
     "get_spec",
     "get_specs",
     "hf_model_type",
-    "iter_gate_up_pairs",
-    "iter_pqs_fuse_rules",
     "match_moe_block",
     "register",
-    "weight_plus_one_norm_names",
 ]
+
+T = TypeVar("T")
 
 _SPECS: dict[str, ModelSpec] = {}
 
@@ -61,33 +61,16 @@ def get_specs() -> list[ModelSpec]:
     return list(_SPECS.values())
 
 
-def iter_pqs_fuse_rules():
-    """Yield each spec's ``(module_class_substrings, fuse_into, fuse_from)`` AWQ fusion rules."""
-    for spec in get_specs():
-        yield from spec.pqs_fuse_rules
+def collect(getter: Callable[[ModelSpec], Iterable[T]]) -> tuple[T, ...]:
+    """Aggregate a spec field across all registered specs, deduplicated in order.
 
-
-def iter_gate_up_pairs() -> Iterator[tuple[str, str]]:
-    """Yield the distinct (gate, up) projection-name pairs across all MoE variants.
-
-    Global-vocabulary semantics: consumers try every pair on every module,
-    getattr-guarded, so adding a pair to any spec affects all models whose modules
-    carry those attribute names. Prefer per-module resolution
-    (``match_moe_block(module).gate_up_pair``) wherever the module is an
-    identifiable MoE block.
+    ``collect(lambda spec: spec.pqs_fuse_rules)`` flattens the field over every
+    spec. The result is a global vocabulary: consumers match it against any model's
+    modules, so adding a value to one spec affects all models the consumer walks —
+    prefer ``get_spec(model_type)`` / ``match_moe_block`` wherever the owning model
+    is identifiable.
     """
-    seen = set()
-    for spec in get_specs():
-        for variant in spec.moe_variants:
-            pair = variant.gate_up_pair
-            if pair is not None and pair not in seen:
-                seen.add(pair)
-                yield pair
-
-
-def weight_plus_one_norm_names() -> tuple[str, ...]:
-    """All norm class names whose stored weight is ``w - 1``, across all specs."""
-    return tuple(name for spec in get_specs() for name in spec.weight_plus_one_norm_names)
+    return tuple(dict.fromkeys(item for spec in get_specs() for item in getter(spec)))
 
 
 def hf_model_type(model) -> str | None:

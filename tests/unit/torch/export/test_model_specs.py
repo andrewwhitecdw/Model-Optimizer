@@ -18,15 +18,7 @@
 import pytest
 import torch.nn as nn
 
-from modelopt.models import (
-    ModelSpec,
-    MoEVariant,
-    hf_model_type,
-    iter_gate_up_pairs,
-    iter_pqs_fuse_rules,
-    match_moe_block,
-    weight_plus_one_norm_names,
-)
+from modelopt.models import ModelSpec, MoEVariant, collect, hf_model_type, match_moe_block
 from modelopt.models.registry import _SPECS
 from modelopt.torch.export.layer_utils import (
     get_expert_linear_names,
@@ -157,7 +149,7 @@ def test_pqs_fuse_rules_match_legacy_mapping():
     # triples, must reproduce the legacy PQS_FUSE_MODULE_MAPPING.
     rules = {
         (substring, fuse_into, fuse_from)
-        for substrings, fuse_into, fuse_from in iter_pqs_fuse_rules()
+        for substrings, fuse_into, fuse_from in collect(lambda spec: spec.pqs_fuse_rules)
         for substring in substrings
     }
     legacy = {
@@ -173,11 +165,11 @@ def test_pqs_fuse_rules_match_legacy_mapping():
 
 def test_gate_up_pairs_match_legacy():
     # Aggregated per-model pairs must reproduce the legacy _GATE_UP_PAIRS set.
-    assert set(iter_gate_up_pairs()) == {("gate_proj", "up_proj"), ("w1", "w3")}
+    assert set(collect(lambda spec: spec.gate_up_pairs)) == {("gate_proj", "up_proj"), ("w1", "w3")}
 
 
 def test_weight_plus_one_norm_names_cover_legacy():
-    names = set(weight_plus_one_norm_names())
+    names = set(collect(lambda spec: spec.weight_plus_one_norm_names))
     assert {"GemmaRMSNorm", "Gemma2RMSNorm", "Gemma3RMSNorm", "LayerNorm1P"} <= names
 
 

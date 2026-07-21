@@ -96,6 +96,11 @@ class MoESpec:
     """The model's MoE-block layouts; more than one when the same checkpoint
     materializes differently (see ``MoEVariant``)."""
 
+    @property
+    def gate_up_pairs(self) -> tuple[tuple[str, str], ...]:
+        """The (gate, up) projection-name pairs declared by this model's variants."""
+        return tuple(v.gate_up_pair for v in self.moe_variants if v.gate_up_pair is not None)
+
     def match_moe_variant(self, module) -> MoEVariant | None:
         """Return the variant whose ``block_names`` matches ``module``, else None."""
         for variant in self.moe_variants:
