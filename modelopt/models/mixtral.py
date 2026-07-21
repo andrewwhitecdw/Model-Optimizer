@@ -31,8 +31,8 @@ register(
                 # w1 = gate, w3 = up, w2 = down (Mixtral convention).
                 gate_up_pair=("w1", "w3"),
             ),
-            # Legacy-naming layout kept from the legacy engine chain: same model
-            # type, different block class and projection names.
+            # Older materialization: same model type, different block class and
+            # projection names.
             MoEVariant(
                 block_names=("MixtralMoeSparseMoeBlock",),
                 expert_linear_names=("linear_fc1", "linear_fc2"),

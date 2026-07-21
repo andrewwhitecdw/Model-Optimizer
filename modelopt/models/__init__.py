@@ -15,13 +15,11 @@
 
 """Per-model descriptors, one module per HF model type.
 
-Module names mirror the ``transformers.models`` layout
-(https://github.com/huggingface/transformers/tree/main/src/transformers/models);
-trust-remote-code models (``arctic``, ``deepseek``) use their config ``model_type``.
-Each model module registers one global ``ModelSpec`` (see ``specs.py``); importing
-this package registers them all. Consumers resolve a spec via the registry lookups
-(``get_spec`` / ``match_moe_block``) and read its fields; an unmatched lookup
-returns ``None`` so callers fail loudly or fall back per their own policy.
+Module names mirror the ``transformers.models`` layout; trust-remote-code models
+(``arctic``, ``deepseek``) use their config ``model_type``. Each model module
+registers one global ``ModelSpec`` (see ``specs.py``); importing this package
+registers them all. Consumers resolve a spec via the registry lookups
+(``get_spec`` / ``match_moe_block``) and read its fields.
 """
 
 from .registry import *

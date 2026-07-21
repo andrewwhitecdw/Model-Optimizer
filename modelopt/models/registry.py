@@ -15,13 +15,10 @@
 
 """Registry indexing the per-model ``ModelSpec`` by HF model type.
 
-Model modules register their spec at import time (see ``models/``); one spec per
-model type. Lookups return ``None`` (or an empty list) when nothing matches, so
-callers can fail loudly or fall back per their own policy.
-
-Matching is by model-type and class-name strings only, so this package stays
-dependency-free (any ``nn.Module`` — or any object — can be passed to the lookups
-without importing torch here).
+Model modules register their spec at import time; one spec per model type. Lookups
+return ``None`` (or an empty list) when nothing matches, so callers can fail loudly
+or fall back per their own policy. Matching is by model-type and class-name strings
+only, so this package needs no torch import.
 """
 
 from collections.abc import Iterator
@@ -60,16 +57,12 @@ def get_spec(model_type: str) -> ModelSpec | None:
 
 
 def get_specs() -> list[ModelSpec]:
-    """Return all registered specs, in registration order (aggregators, tests)."""
+    """Return all registered specs, in registration order."""
     return list(_SPECS.values())
 
 
 def iter_pqs_fuse_rules():
-    """Yield every ``(module_class_substrings, fuse_into, fuse_from)`` AWQ fusion rule.
-
-    Aggregated across all registered specs (the consumer matches each model module
-    against the substrings, so the order across specs does not matter).
-    """
+    """Yield each spec's ``(module_class_substrings, fuse_into, fuse_from)`` AWQ fusion rules."""
     for spec in get_specs():
         yield from spec.pqs_fuse_rules
 
@@ -77,14 +70,11 @@ def iter_pqs_fuse_rules():
 def iter_gate_up_pairs() -> Iterator[tuple[str, str]]:
     """Yield the distinct (gate, up) projection-name pairs across all MoE variants.
 
-    GLOBAL-VOCABULARY semantics: consumers (currently only calibration sibling
-    grouping in ``quantization/model_calib.py``, which also walks dense MLPs that
-    no MoE variant can match) try every pair opportunistically on every module,
-    getattr-guarded. Adding a pair to any spec therefore changes behavior for ALL
-    models whose modules happen to carry those attribute names — prefer per-module
-    resolution (``match_moe_block(module).gate_up_pair``) wherever the module is an
-    identifiable MoE block. The dense-MLP case moves to a fusion-group topic
-    section in a follow-up (see MODEL_SPECIFIC_REFACTOR.md P5).
+    Global-vocabulary semantics: consumers try every pair on every module,
+    getattr-guarded, so adding a pair to any spec affects all models whose modules
+    carry those attribute names. Prefer per-module resolution
+    (``match_moe_block(module).gate_up_pair``) wherever the module is an
+    identifiable MoE block.
     """
     seen = set()
     for spec in get_specs():
@@ -103,9 +93,8 @@ def weight_plus_one_norm_names() -> tuple[str, ...]:
 def hf_model_type(model) -> str | None:
     """Return the root HF model type (``model.config.model_type``), or ``None``.
 
-    Accepts a model or a config object (duck-typed, no transformers import): a
-    model contributes via its ``config`` attribute, a config via its own
-    ``model_type``. This is the key for ``get_spec`` / ``match_moe_block``.
+    Accepts a model or a config object (duck-typed, no transformers import). This
+    is the key for ``get_spec`` / ``match_moe_block``.
     """
     config = getattr(model, "config", model)
     model_type = getattr(config, "model_type", None)
@@ -115,18 +104,12 @@ def hf_model_type(model) -> str | None:
 def match_moe_block(module: "nn.Module", model_type: str | None = None) -> MoEVariant | None:
     """Return the MoE layout variant for ``module``, resolved by model type.
 
-    ``model_type`` is the model's root HF type (``model.config.model_type``) and is
-    a strict filter: only that model's own spec is consulted. A model whose
-    model_type has no spec resolves to ``None`` even if its module class names
-    coincide with another model's — register a spec instead of inheriting a
-    neighbor's data. ``None`` (no config available: unit tests, the TRT-LLM path)
-    searches all specs. Sub-model types of composite models are not walked today;
-    a composite whose MoE lives under a tower type registers the root type too
-    (see ``gemma4.py``).
-
-    Within the spec, variant ``block_names`` identifies the block and disambiguates
-    same-model layout variants (``MoESpec.match_moe_variant``); quantized wrapper
-    classes match through their original base class in the MRO.
+    ``model_type`` (the root ``model.config.model_type``) is a strict filter: only
+    that model's own spec is consulted, and an unregistered model type resolves to
+    ``None`` even if the module's class names coincide with another model's.
+    ``model_type=None`` searches all specs. A composite model whose MoE lives under
+    a sub-model type registers the root type too (see ``gemma4.py``). Within the
+    spec, variant ``block_names`` matched against the module's MRO picks the layout.
     """
     if model_type:
         spec = get_spec(model_type)

@@ -95,10 +95,8 @@ def get_experts_list(
     """
     experts_list = []
 
-    # The grouped export path only supports layouts whose experts are iterable
-    # per-expert sub-modules (spec.has_iterable_experts); stacked/fused layouts
-    # (DBRX, GptOss, ...) raise NotImplementedError here and are handled by other
-    # paths. Name resolution itself is shared with get_expert_linear_names.
+    # Only layouts with iterable per-expert sub-modules are supported here;
+    # stacked/fused layouts (DBRX, GptOss, ...) are handled by other paths.
     variant = match_moe_block(module, model_type)
     if variant is None or not variant.has_iterable_experts:
         raise NotImplementedError(
@@ -306,9 +304,8 @@ def is_mlp(module: nn.Module) -> bool:
 def is_moe(module: nn.Module, model_type: str | None = None) -> bool:
     """Returns whether the module is an MOE layer.
 
-    ``model_type`` (``model.config.model_type``) strictly scopes the registry lookup
-    to the model's own spec; the generic naming conventions and the structural check
-    below are unaffected by it.
+    ``model_type`` (``model.config.model_type``) scopes the registry lookup to the
+    model's own spec.
     """
     name = type(module).__name__.lower()
     # Auto-detect common MoE patterns
@@ -974,18 +971,14 @@ def _build_stacked_linear(experts: nn.Module, module_name, linear_type, num_expe
 def get_expert_linear_names(module: nn.Module, model_type: str | None) -> list[str]:
     """Get the list of linear names for the experts.
 
+    Fused-expert layouts are detected structurally first; otherwise the names come
+    from the model's own spec (``MoESpec.expert_linear_names_for``). Raises
+    NotImplementedError when nothing resolves, so a new MoE model fails loudly
+    instead of silently inheriting another model's naming.
+
     Args:
         module: the MoE block.
         model_type: the model's HF model type (``model.config.model_type``).
-
-    Resolution order: structural detection of fused-expert layouts first (runtime
-    state: transformers>=5 fused experts, and modules rewritten during export), then
-    the model's own spec by model type — the block class name is not needed, so a
-    spec can provide expert naming without declaring ``block_names``; the block
-    class only disambiguates same-model layout variants (see
-    ``MoESpec.expert_linear_names_for``). Raises NotImplementedError when nothing
-    resolves, so a new MoE model fails loudly instead of silently inheriting another
-    model's naming.
     """
     # Structural detection: after _export_fused_experts, fused expert modules
     # have per-expert submodules with gate_proj/up_proj/down_proj.
@@ -1197,10 +1190,8 @@ def sync_moe_gate_up_amax(model: nn.Module) -> int:
             continue
         if not hasattr(sub_module.experts, "__iter__"):
             continue
-        # The gate/up pair is this model's own data (MoEVariant.gate_up_pair) — no
-        # cross-model guessing. A variant declaring no pair (non-gated NemotronH,
-        # fused GptOss/DBRX) needs no sync; an unmatched block is warned about
-        # once instead of silently skipped.
+        # The gate/up pair comes from the model's own spec; a variant with no pair
+        # (non-gated or already-fused experts) needs no sync.
         variant = match_moe_block(sub_module, model_type)
         if variant is None:
             unmatched_block_names.add(type(sub_module).__name__)

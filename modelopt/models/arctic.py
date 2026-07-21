@@ -23,10 +23,8 @@ register(
         model_type="arctic",
         moe_variants=(
             MoEVariant(
-                # Non-standard block name (for is_moe identification).
                 block_names=("ArcticMoE",),
-                # ArcticMLP experts use Mixtral-style w1/w2/w3 naming (previously served by
-                # the engine's implicit w1/w2/w3 default, now declared explicitly).
+                # ArcticMLP experts use Mixtral-style w1/w2/w3 naming.
                 expert_linear_names=("w1", "w2", "w3"),
                 gate_up_pair=("w1", "w3"),
             ),

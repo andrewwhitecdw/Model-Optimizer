@@ -22,10 +22,8 @@ classes.
 from .registry import register
 from .specs import ModelSpec, MoEVariant
 
-# DeepseekMoE experts ARE structurally iterable (ModuleList of DeepseekMLP), but
-# has_iterable_experts stays False until the grouped export path (get_experts_list
-# resmoothing) is validated on this model — the flag currently doubles as that
-# support gate.
+# has_iterable_experts stays False until the grouped export path is validated on
+# this model.
 register(
     ModelSpec(
         model_type="deepseek",

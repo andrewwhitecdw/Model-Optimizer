@@ -13,19 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Gemma 1/2/3 specs (HF model types ``gemma``/``gemma2``/``gemma3``).
-
-Grouped in one module because each generation contributes the same single fact;
-Gemma4 has its own module (``gemma4.py``) for its MoE spec.
-"""
+"""Gemma 1/2/3 specs (HF model types ``gemma``/``gemma2``/``gemma3``); Gemma4 is in ``gemma4.py``."""
 
 from .registry import register
 from .specs import ModelSpec
 
-# Gemma RMSNorms store weight - 1 (the effective scale is weight + 1); scale-folding
-# engines (AWQ pre_quant_scale fusion into the norm) must account for the +1.
-# NOTE: Gemma4RMSNorm is intentionally absent to preserve legacy behavior; add it
-# once the +1 handling is validated on Gemma4.
+# Gemma RMSNorms store weight - 1 (the effective scale is weight + 1).
+# Gemma4RMSNorm is intentionally absent until the +1 handling is validated on Gemma4.
 register(ModelSpec(model_type="gemma", weight_plus_one_norm_names=("GemmaRMSNorm",)))
 register(ModelSpec(model_type="gemma2", weight_plus_one_norm_names=("Gemma2RMSNorm",)))
 register(ModelSpec(model_type="gemma3", weight_plus_one_norm_names=("Gemma3RMSNorm",)))

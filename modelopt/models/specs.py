@@ -21,12 +21,11 @@ It is composed from section mixins so each concern stays a small, separate class
 
 - **topic sections** hold architecture facts shared across subsystems (``MoESpec``:
   what a model's MoE blocks are; ``NormSpec``: norm-layer conventions);
-- **subsystem sections** hold one subsystem's per-model policy (``ExportSpec``;
-  quantization / speculative-decoding sections to follow).
+- **subsystem sections** hold one subsystem's per-model policy (``ExportSpec``).
 
 Sections hold per-model data plus trivial accessors over that data; subsystem logic
-never lives here. A model file registers exactly one ``ModelSpec``, filling only the
-sections it customizes (see ``models/``).
+never lives here. A model registers exactly one ``ModelSpec`` in its sibling module,
+filling only the sections it customizes.
 """
 
 from dataclasses import dataclass
@@ -44,14 +43,9 @@ __all__ = [
 def match_class_names(module, names: tuple[str, ...]) -> bool:
     """Return True if any of ``names`` equals a class name in ``module``'s MRO.
 
-    Case-insensitive exact-name comparison against ``cls.__name__`` for every class
-    in ``type(module).__mro__`` — the same semantics as the export dispatch
-    registry's string keys (``modelopt.torch.export.registry``). Dynamically
-    generated quantized classes are subclasses of the original module class, so they
-    match through their base; exact-name comparison avoids substring false
-    positives. Comparison is case-insensitive because some registered names predate
-    this registry and their casing was never exercised by the legacy substring
-    matching.
+    Case-insensitive exact-name comparison against every class in
+    ``type(module).__mro__``: dynamically generated quantized classes match through
+    their base class, and exact names avoid substring false positives.
     """
     mro_names = {cls.__name__.lower() for cls in type(module).__mro__}
     return any(name.lower() in mro_names for name in names)
@@ -76,18 +70,16 @@ class MoEVariant:
     rewritten module."""
 
     has_iterable_experts: bool = False
-    """True when experts are per-expert iterable sub-modules (Mixtral, Qwen MoE,
-    NemotronH, Gemma4) and can be grouped by ``get_experts_list``; False for stacked
-    or fused layouts (DBRX, GptOss). NOTE: currently also doubles as the grouped-export
-    support gate, so it is conservatively False for structurally iterable but
-    unvalidated models (see ``deepseek``)."""
+    """True when experts are per-expert iterable sub-modules that
+    ``get_experts_list`` can group (Mixtral, Qwen MoE, ...); False for stacked or
+    fused layouts (DBRX, GptOss) and for layouts not yet validated on the grouped
+    export path."""
 
     gate_up_pair: tuple[str, str] | None = None
     """The (gate, up) pair among ``expert_linear_names`` that serving engines fuse
     into a single ``gate_up_proj``, e.g. ``("gate_proj", "up_proj")`` or
     ``("w1", "w3")``. ``None`` for non-gated experts (NemotronH) and already-fused
-    layouts (GptOss, DBRX). Consumed by amax syncing before quantized export (see
-    ``sync_moe_gate_up_amax``) and by calibration grouping."""
+    layouts (GptOss, DBRX)."""
 
 
 @dataclass(kw_only=True)
@@ -155,8 +147,8 @@ class ExportSpec:
     fuse_into, fuse_from)`` triple: for a module whose class name contains one of the
     substrings, the pre_quant_scale on ``fuse_from`` is folded into ``fuse_into``
     (e.g. attention ``o_proj`` -> ``v_proj``, MLP ``down_proj`` -> ``up_proj``).
-    A rule is a validated mathematical-equivalence claim for that model's modules,
-    which is why it is declared per model rather than applied generically."""
+    A rule asserts mathematical equivalence for that model's modules, so it is
+    declared per model rather than applied generically."""
 
 
 @dataclass(kw_only=True)

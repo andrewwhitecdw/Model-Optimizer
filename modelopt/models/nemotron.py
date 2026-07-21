@@ -18,10 +18,8 @@
 from .registry import register
 from .specs import ModelSpec
 
-# LayerNorm1P stores weight - 1 (zero-centered gamma). Both the plain Megatron-style
-# class name and the HF Nemotron port are listed; modules exposing a
-# ``zero_centered_gamma`` attribute are additionally caught by the engine's
-# structural fallback.
+# LayerNorm1P stores weight - 1 (zero-centered gamma); both the Megatron-style class
+# name and the HF Nemotron port are listed.
 register(
     ModelSpec(
         model_type="nemotron",
