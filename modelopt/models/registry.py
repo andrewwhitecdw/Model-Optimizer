@@ -59,20 +59,13 @@ def get_specs() -> list[ModelSpec]:
 
 
 def list_all_possible(attr: str) -> tuple:
-    """List every registered value of a collectable spec attribute, deduplicated in order.
+    """List a spec attribute's values across all registered specs, deduplicated in order.
 
-    ``attr`` must be declared collectable on ``ModelSpec`` (``collectable_field`` /
-    ``collectable_property``), e.g. ``list_all_possible("gate_up_pairs")``. The
-    result is a global vocabulary: consumers match it against any model's modules,
-    so adding a value to one spec affects all models the consumer walks — prefer
-    ``get_spec(model_type)`` / ``match_moe_block`` wherever the owning model is
-    identifiable.
+    E.g. ``list_all_possible("gate_up_pairs")``. The result is a global vocabulary:
+    consumers match it against any model's modules, so adding a value to one spec
+    affects all models the consumer walks — prefer ``get_spec(model_type)`` /
+    ``match_moe_block`` wherever the owning model is identifiable.
     """
-    if attr not in ModelSpec.collectable_names():
-        raise ValueError(
-            f"{attr!r} is not a collectable ModelSpec attribute; "
-            f"collectable attributes: {sorted(ModelSpec.collectable_names())}"
-        )
     return tuple(dict.fromkeys(item for spec in get_specs() for item in getattr(spec, attr)))
 
 
