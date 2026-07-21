@@ -21,8 +21,7 @@ or fall back per their own policy. Matching is by model-type and class-name stri
 only, so this package needs no torch import.
 """
 
-from collections.abc import Callable, Iterable
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING
 
 from .specs import ModelSpec, MoEVariant
 
@@ -30,15 +29,13 @@ if TYPE_CHECKING:
     import torch.nn as nn
 
 __all__ = [
-    "collect",
     "get_spec",
     "get_specs",
     "hf_model_type",
+    "list_all_possible",
     "match_moe_block",
     "register",
 ]
-
-T = TypeVar("T")
 
 _SPECS: dict[str, ModelSpec] = {}
 
@@ -61,16 +58,22 @@ def get_specs() -> list[ModelSpec]:
     return list(_SPECS.values())
 
 
-def collect(getter: Callable[[ModelSpec], Iterable[T]]) -> tuple[T, ...]:
-    """Aggregate a spec field across all registered specs, deduplicated in order.
+def list_all_possible(attr: str) -> tuple:
+    """List every registered value of a collectable spec attribute, deduplicated in order.
 
-    ``collect(lambda spec: spec.pqs_fuse_rules)`` flattens the field over every
-    spec. The result is a global vocabulary: consumers match it against any model's
-    modules, so adding a value to one spec affects all models the consumer walks —
-    prefer ``get_spec(model_type)`` / ``match_moe_block`` wherever the owning model
-    is identifiable.
+    ``attr`` must be declared collectable on ``ModelSpec`` (``collectable_field`` /
+    ``collectable_property``), e.g. ``list_all_possible("gate_up_pairs")``. The
+    result is a global vocabulary: consumers match it against any model's modules,
+    so adding a value to one spec affects all models the consumer walks — prefer
+    ``get_spec(model_type)`` / ``match_moe_block`` wherever the owning model is
+    identifiable.
     """
-    return tuple(dict.fromkeys(item for spec in get_specs() for item in getter(spec)))
+    if attr not in ModelSpec.collectable_names():
+        raise ValueError(
+            f"{attr!r} is not a collectable ModelSpec attribute; "
+            f"collectable attributes: {sorted(ModelSpec.collectable_names())}"
+        )
+    return tuple(dict.fromkeys(item for spec in get_specs() for item in getattr(spec, attr)))
 
 
 def hf_model_type(model) -> str | None:

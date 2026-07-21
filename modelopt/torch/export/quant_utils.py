@@ -25,7 +25,7 @@ import torch
 import torch.nn as nn
 
 from modelopt import __version__
-from modelopt.models import collect, match_class_names
+from modelopt.models import list_all_possible, match_class_names
 from modelopt.torch.quantization.model_calib import (
     enable_stats_collection,
     finish_stats_collection,
@@ -1167,7 +1167,7 @@ def fuse_prequant_to_linear(model: torch.nn.Module, fuse_grouped_heads=False):
     """
     # Fuse pre_quant_scale to the linear weights
     for _, module in model.named_modules():
-        for target_module_list, fuse_into, fuse_from in collect(lambda spec: spec.pqs_fuse_rules):
+        for target_module_list, fuse_into, fuse_from in list_all_possible("pqs_fuse_rules"):
             if any(module_name in type(module).__name__ for module_name in target_module_list):
                 linear_fuse_into = module.get_submodule(fuse_into)
                 linear_pqs_from = module.get_submodule(fuse_from)
@@ -1233,7 +1233,7 @@ def fuse_prequant_to_linear(model: torch.nn.Module, fuse_grouped_heads=False):
 def _layernorm_uses_weight_plus_one(module: torch.nn.Module) -> bool:
     # Weight-plus-one norm class names are per-model data (NormSpec); the
     # zero_centered_gamma attribute check is the structural fallback.
-    if match_class_names(module, collect(lambda spec: spec.weight_plus_one_norm_names)):
+    if match_class_names(module, list_all_possible("weight_plus_one_norm_names")):
         return True
 
     return bool(hasattr(module, "zero_centered_gamma") and module.zero_centered_gamma)

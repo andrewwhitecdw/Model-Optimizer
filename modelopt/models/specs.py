@@ -28,7 +28,7 @@ never lives here. A model registers exactly one ``ModelSpec`` in its sibling mod
 filling only the sections it customizes.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field, fields
 
 __all__ = [
     "ExportSpec",
@@ -36,8 +36,28 @@ __all__ = [
     "MoEVariant",
     "ModelSpec",
     "NormSpec",
+    "collectable_field",
+    "collectable_property",
     "match_class_names",
 ]
+
+_COLLECTABLE = "collectable"
+
+
+def collectable_field(**kwargs):
+    """Declare a spec field whose values may be aggregated across all registered specs.
+
+    Marked fields (and ``collectable_property`` attributes) are the only ones
+    ``registry.list_all_possible`` accepts.
+    """
+    kwargs.setdefault("default", ())
+    return field(metadata={_COLLECTABLE: True}, **kwargs)
+
+
+def collectable_property(func):
+    """Like ``collectable_field``, for derived (property) spec attributes."""
+    func._collectable = True
+    return property(func)
 
 
 def match_class_names(module, names: tuple[str, ...]) -> bool:
@@ -96,7 +116,7 @@ class MoESpec:
     """The model's MoE-block layouts; more than one when the same checkpoint
     materializes differently (see ``MoEVariant``)."""
 
-    @property
+    @collectable_property
     def gate_up_pairs(self) -> tuple[tuple[str, str], ...]:
         """The (gate, up) projection-name pairs declared by this model's variants."""
         return tuple(v.gate_up_pair for v in self.moe_variants if v.gate_up_pair is not None)
@@ -130,7 +150,7 @@ class MoESpec:
 class NormSpec:
     """Topic section: normalization-layer architecture facts."""
 
-    weight_plus_one_norm_names: tuple[str, ...] = ()
+    weight_plus_one_norm_names: tuple[str, ...] = collectable_field()
     """Class names of norm layers whose stored weight is ``w - 1`` (the effective
     scale is ``weight + 1``), e.g. Gemma's RMSNorm variants and LayerNorm1P.
     Matched against a norm module's MRO (case-insensitive exact names). Engines
@@ -147,7 +167,7 @@ class ExportSpec:
     section holds decisions that belong to the export/quantization algorithms only.
     """
 
-    pqs_fuse_rules: tuple[tuple[tuple[str, ...], str, str], ...] = ()
+    pqs_fuse_rules: tuple[tuple[tuple[str, ...], str, str], ...] = collectable_field()
     """AWQ ``pre_quant_scale`` fusion rules, each a ``(module_class_substrings,
     fuse_into, fuse_from)`` triple: for a module whose class name contains one of the
     substrings, the pre_quant_scale on ``fuse_from`` is folded into ``fuse_into``
@@ -167,3 +187,13 @@ class ModelSpec(MoESpec, NormSpec, ExportSpec):
     model_type: str
     """The HF model type this spec describes (``config.model_type``, e.g.
     ``"qwen3_moe"``). Unique across the registry."""
+
+    @classmethod
+    def collectable_names(cls) -> frozenset[str]:
+        """Attribute names declared collectable (see ``collectable_field``)."""
+        names = {f.name for f in fields(cls) if f.metadata.get(_COLLECTABLE)}
+        for klass in cls.__mro__:
+            for name, attr in vars(klass).items():
+                if isinstance(attr, property) and getattr(attr.fget, "_collectable", False):
+                    names.add(name)
+        return frozenset(names)
