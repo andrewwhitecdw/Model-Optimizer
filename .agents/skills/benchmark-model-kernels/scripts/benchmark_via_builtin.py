@@ -16,16 +16,18 @@
 """Run FlashInfer's built-in GEMM and fused-MoE microbenchmarks.
 
 Plain rows contain kernel time. Most ``*_with_quant`` rows add a separately
-measured activation-quantization time; NVFP4 MoE with quantization is measured
-directly. Logical shapes label each case while backend-specific physical
-padding follows vLLM. A local FlashInfer source checkout is required for its
-benchmark driver and utilities.
+measured activation-quantization time in the scale-factor layout the backend
+consumes; the NVFP4 CUTLASS MoE row is instead a single fused measurement.
+Logical shapes label each case while backend-specific physical padding follows
+vLLM. A local FlashInfer source checkout is required for its benchmark driver
+and utilities.
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
+import os
 import shlex
 import subprocess  # nosec B404
 import sys
@@ -34,6 +36,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from typing import TextIO
+
     import torch
 
 try:
@@ -55,8 +59,6 @@ _MOE_ACTIVATIONS = (
     "SwigluStep",
     "Identity",
 )
-_MOE_ROUTINGS = ("renormalize", "deepseek_v3", "llama4", "renormalize_naive", "topk")
-
 _ResultValue = float | str
 
 
@@ -101,7 +103,7 @@ def _nk_pair(value: str) -> tuple[int, int]:
 
 def _named_nks(
     nks: list[tuple[int, int]], names: list[str] | None
-) -> tuple[list[tuple[int, int]], list[str] | None]:
+) -> tuple[list[tuple[int, int]], dict[tuple[int, int], list[str]] | None]:
     if names is not None and len(names) != len(nks):
         raise ValueError("--nk_names must contain exactly one name for each --nks pair")
 
@@ -114,7 +116,7 @@ def _named_nks(
         labels = names_by_nk.setdefault(nk, [])
         if name not in labels:
             labels.append(name)
-    return unique_nks, ["/".join(names_by_nk[nk]) for nk in unique_nks]
+    return unique_nks, names_by_nk
 
 
 def _round_up(value: int, alignment: int) -> int:
@@ -141,19 +143,13 @@ def _parse_driver_errors(lines: list[str]) -> dict[str, str]:
     return errors
 
 
-def _run_driver(
-    benchmarks_dir: Path, testlist: Path, output: Path, driver_log: Path
-) -> tuple[int, list[str]]:
-    # This invokes the explicitly selected FlashInfer checkout without a shell.
+def _run_case(benchmarks_dir: Path, argv: list[str], log: TextIO) -> tuple[int, list[str]]:
+    # Each case gets its own driver process: a fatal CUDA fault (for example a
+    # misaligned address) permanently poisons the CUDA context, so sharing one
+    # process would fail every later case (verified empirically). This invokes
+    # the explicitly selected FlashInfer checkout without a shell.
     process = subprocess.Popen(  # nosec B603
-        [
-            sys.executable,
-            "flashinfer_benchmark.py",
-            "--testlist",
-            str(testlist.resolve()),
-            "--output_path",
-            str(output.resolve()),
-        ],
+        [sys.executable, "flashinfer_benchmark.py", *argv],
         cwd=benchmarks_dir,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -162,12 +158,85 @@ def _run_driver(
     )
     assert process.stdout is not None
     lines = []
-    with driver_log.open("w") as log:
-        for line in process.stdout:
-            print(line, end="", flush=True)
-            log.write(line)
-            lines.append(line)
+    for line in process.stdout:
+        print(line, end="", flush=True)
+        log.write(line)
+        lines.append(line)
     return process.wait(), lines
+
+
+def _gpu_description() -> str:
+    try:
+        import torch
+
+        # The driver name can be a placeholder on pre-release GPUs, so record
+        # compute capability, SM count, and memory to pin down the exact part.
+        properties = torch.cuda.get_device_properties(0)
+        name = (
+            f"{properties.name} (sm_{properties.major}{properties.minor} / "
+            f"{properties.multi_processor_count} SMs / "
+            f"{properties.total_memory / (1 << 30):.0f} GiB)"
+        )
+    except Exception:
+        return "unknown GPU"
+    watts = "unknown power limit"
+    try:
+        import pynvml
+
+        pynvml.nvmlInit()
+        try:
+            # NVML does not honor CUDA_VISIBLE_DEVICES, so map the first
+            # visible device back to its physical NVML handle.
+            visible = os.environ.get("CUDA_VISIBLE_DEVICES", "").split(",")[0].strip()
+            if visible.startswith(("GPU-", "MIG-")):
+                handle = pynvml.nvmlDeviceGetHandleByUUID(visible)
+            else:
+                handle = pynvml.nvmlDeviceGetHandleByIndex(int(visible) if visible else 0)
+            limit = pynvml.nvmlDeviceGetPowerManagementLimit(handle)
+            watts = f"{limit / 1000:.0f} W power limit"
+        finally:
+            pynvml.nvmlShutdown()
+    except Exception:
+        pass
+    return f"{name}; {watts}"
+
+
+def _environment_header(flashinfer_repo: Path) -> str:
+    try:
+        import flashinfer
+
+        version = flashinfer.__version__
+    except Exception:
+        version = "unknown"
+    try:
+        # Reads the revision of the explicitly selected checkout, no shell.
+        result = subprocess.run(  # nosec B603 B607
+            ["git", "-C", str(flashinfer_repo), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        revision = result.stdout.strip() or "unknown"
+    except OSError:
+        revision = "unknown"
+    return (
+        f"flashinfer {version}; checkout {flashinfer_repo.resolve()} @ {revision}; "
+        f"{_gpu_description()}"
+    )
+
+
+def _write_builtin(path: Path, rows: list[dict[str, str]]) -> None:
+    fieldnames: dict[str, None] = {}
+    for row in rows:
+        for key in row:
+            fieldnames.setdefault(key, None)
+    with path.open("w", newline="") as stream:
+        writer = csv.DictWriter(
+            stream, fieldnames=list(fieldnames), restval="", lineterminator="\n"
+        )
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 def _gemm_cases(
@@ -179,10 +248,18 @@ def _gemm_cases(
 
     for m in ms:
         for n, k in nks:
+            # Physical padding follows vLLM: dense NVFP4 on cuDNN, CUTLASS,
+            # and CuteDSL pads N and K to multiples of 32; trtllm keeps the
+            # exact shape with the shuffled layout; BF16 and FP8 stay exact.
             variants: list[tuple[str, str, str, int, int, list[str], str | None]] = [
                 ("bf16", "mm_bf16", "cudnn", n, k, [], None)
             ]
-            for backend in ("cudnn", "cutlass", "trtllm"):
+            for row_suffix, backend in (
+                ("cudnn", "cudnn"),
+                ("cutlass", "cutlass"),
+                ("cutedsl", "cute-dsl"),
+                ("trtllm", "trtllm"),
+            ):
                 layout = "128x4" if backend != "trtllm" or m > 32 else "8x4"
                 extra = ["--use_nvfp4"]
                 if layout == "128x4":
@@ -192,7 +269,7 @@ def _gemm_cases(
                     run_n, run_k = _round_up(n, 32), _round_up(k, 32)
                 variants.append(
                     (
-                        f"nvfp4_{backend}",
+                        f"nvfp4_{row_suffix}",
                         "mm_fp4",
                         backend,
                         run_n,
@@ -248,17 +325,12 @@ def _moe_cases(
     shape: tuple[int, int, int, int] | None,
     common: list[str],
     activation: str | None,
-    routing: str | None,
-    routing_args: list[str] | None = None,
 ) -> list[_Case]:
     if shape is None:
         return []
-    routine = "cutlass_fused_moe"
 
     hidden, intermediate, experts, top_k = shape
     shape_args = [
-        "--hidden_size",
-        str(hidden),
         "--num_experts",
         str(experts),
         "--top_k",
@@ -266,9 +338,6 @@ def _moe_cases(
     ]
     if activation:
         shape_args += ["--activation-type", activation]
-    if routing:
-        shape_args += ["--routing_method", routing]
-    shape_args += routing_args or []
 
     cases = []
     gated = activation is None or activation in {
@@ -277,25 +346,77 @@ def _moe_cases(
         "SwigluBias",
         "SwigluStep",
     }
+    # Pad a dimension only when vLLM pads it. FP8 per-tensor (CUTLASS and
+    # trtllm-gen) pads the intermediate to 16 gated / 128 non-gated. NVFP4
+    # CUTLASS pads non-gated intermediate up to the 128-aligned swizzled scale
+    # rows but raises instead of padding gated, so gated stays exact and may
+    # fail like vLLM. NVFP4 trtllm-gen additionally pads hidden to 256.
     fp8_intermediate = _round_up(intermediate, 16 if gated else 128)
-    # Pad a dimension only when vLLM pads it: vLLM pads non-gated NVFP4 expert
-    # weights up to the 128-aligned swizzled scale rows, but raises instead of
-    # padding gated NVFP4, so the gated case stays exact and may fail like vLLM.
     nvfp4_intermediate = intermediate if gated else _round_up(intermediate, 128)
-    variants = (
-        ("bf16_cutlass_moe", intermediate, []),
-        ("fp8_cutlass_moe", fp8_intermediate, ["--cutlass_variant", "fp8"]),
+    variants = [
+        ("bf16_cutlass_moe", "cutlass_fused_moe", hidden, intermediate, [], None),
+        (
+            "fp8_cutlass_moe",
+            "cutlass_fused_moe",
+            hidden,
+            fp8_intermediate,
+            ["--cutlass_variant", "fp8"],
+            "fp8_static",
+        ),
         (
             "nvfp4_cutlass_moe",
+            "cutlass_fused_moe",
+            hidden,
             nvfp4_intermediate,
             ["--cutlass_variant", "nvfp4", "--quantized_input"],
+            None,
         ),
-        ("nvfp4_cutlass_moe_with_quant", nvfp4_intermediate, ["--cutlass_variant", "nvfp4"]),
-    )
-    for row, run_intermediate, extra in variants:
+        (
+            "nvfp4_cutlass_moe_with_quant",
+            "cutlass_fused_moe",
+            hidden,
+            nvfp4_intermediate,
+            ["--cutlass_variant", "nvfp4"],
+            None,
+        ),
+        # Routing is synthetic in this benchmark (uniform random logits), so
+        # the trtllm-gen rows, which route in-kernel, use a fixed renormalize
+        # method to stay comparable across models; the model's real routing
+        # scheme is not derivable from its config alone. CUTLASS and CuteDSL
+        # rows receive precomputed indices and have no routing stage to time.
+        (
+            "fp8_trtllm_moe",
+            "trtllm_fp8_per_tensor_scale_moe",
+            hidden,
+            fp8_intermediate,
+            ["--routing_method", "renormalize"],
+            "fp8_static",
+        ),
+        (
+            "nvfp4_trtllm_moe",
+            "trtllm_fp4_block_scale_moe",
+            _round_up(hidden, 256),
+            fp8_intermediate,
+            ["--routing_method", "renormalize"],
+            "nvfp4_linear",
+        ),
+    ]
+    if activation in (None, "Swiglu"):
+        # FlashInfer's CuteDSL fused MoE supports only gated Swiglu.
+        variants.append(
+            (
+                "nvfp4_cutedsl_moe",
+                "cute_dsl_fp4_block_scale_moe",
+                hidden,
+                intermediate,
+                [],
+                "nvfp4_linear",
+            )
+        )
+    for row, routine, run_hidden, run_intermediate, extra, quant_kind in variants:
         for m in ms:
             key = f"{row}_M={m}"
-            quant = ("fp8_static", m, hidden) if row == "fp8_cutlass_moe" else None
+            quant = (quant_kind, m, run_hidden) if quant_kind else None
             cases.append(
                 _Case(
                     section="moe",
@@ -306,6 +427,8 @@ def _moe_cases(
                         routine,
                         "--num_tokens",
                         str(m),
+                        "--hidden_size",
+                        str(run_hidden),
                         *shape_args,
                         "--intermediate_size",
                         str(run_intermediate),
@@ -322,6 +445,13 @@ def _nvfp4_runner(tensor: torch.Tensor, layout: str):
     import flashinfer
 
     global_scale = (448 * 6) / tensor.float().abs().nan_to_num().max()
+    if layout == "linear":
+        # The trtllm-gen and CuteDSL fused-MoE kernels consume activation
+        # scale factors in linear (unswizzled) layout.
+        def linear_kernel(value, scale):
+            return flashinfer.fp4_quantize(value, scale, is_sf_swizzled_layout=False)
+
+        return linear_kernel, (tensor, global_scale)
     sf_layout = (
         flashinfer.SfLayout.layout_128x4 if layout == "128x4" else flashinfer.SfLayout.layout_8x4
     )
@@ -430,38 +560,70 @@ def _write_results(
     results: dict[str, dict[str, _ResultValue]],
     ms: list[int],
     nks: list[tuple[int, int]],
-    nk_names: list[str] | None = None,
+    names_by_nk: dict[tuple[int, int], list[str]] | None = None,
+    header: str | None = None,
+    moe_label: str | None = None,
 ) -> None:
+    columns = ["module_name", "M", "N", "K", "backend", "with_quant", "runtime"]
     with path.open("w", newline="") as stream:
         writer = csv.writer(stream, lineterminator="\n")
+        if header:
+            writer.writerow([header])
         gemm = results["gemm"]
         if gemm:
             writer.writerow(["GEMM"])
-            writer.writerow(["M", *ms])
-            names = sorted({key.split("_MxNxK=", 1)[0] for key in gemm})
-            for index, (n, k) in enumerate(nks):
-                shape = f"{n}x{k}"
-                label = f"{nk_names[index]}: {shape}" if nk_names is not None else shape
-                writer.writerow([label])
-                for name in names:
-                    cells = [gemm.get(f"{name}_MxNxK={m}x{n}x{k}") for m in ms]
-                    writer.writerow(
-                        [
-                            name,
-                            *(_format_result(value) for value in cells),
-                        ]
-                    )
+            writer.writerow(columns)
+            backends = sorted(
+                {key.split("_MxNxK=", 1)[0].removesuffix("_with_quant") for key in gemm}
+            )
+            for n, k in nks:
+                # Modules fused into one GEMM are joined with "|" inside one
+                # name; distinct same-shape modules each get their own rows,
+                # duplicating the shared measurement.
+                labels = (names_by_nk or {}).get((n, k)) or [f"{n}x{k}"]
+                for label in labels:
+                    for backend in backends:
+                        for m in ms:
+                            for with_quant, key_prefix in (
+                                (False, backend),
+                                (True, f"{backend}_with_quant"),
+                            ):
+                                value = gemm.get(f"{key_prefix}_MxNxK={m}x{n}x{k}")
+                                if value is None:
+                                    continue
+                                writer.writerow(
+                                    [label, m, n, k, backend, with_quant, _format_result(value)]
+                                )
 
         moe = results["moe"]
         if moe:
             if gemm:
                 writer.writerow([])
             writer.writerow(["MoE"])
-            writer.writerow(["M", *ms])
-            names = sorted({key.split("_M=", 1)[0] for key in moe})
-            for name in names:
-                cells = [moe.get(f"{name}_M={m}") for m in ms]
-                writer.writerow([name, *(_format_result(value) for value in cells)])
+            if moe_label:
+                writer.writerow([moe_label])
+            writer.writerow(columns)
+            backends = sorted({key.split("_M=", 1)[0].removesuffix("_with_quant") for key in moe})
+            for backend in backends:
+                for m in ms:
+                    for with_quant, key_prefix in (
+                        (False, backend),
+                        (True, f"{backend}_with_quant"),
+                    ):
+                        value = moe.get(f"{key_prefix}_M={m}")
+                        if value is None:
+                            continue
+                        writer.writerow(
+                            [
+                                "experts",
+                                m,
+                                "",
+                                "",
+                                backend.removesuffix("_moe"),
+                                with_quant,
+                                _format_result(value),
+                            ]
+                        )
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -502,16 +664,6 @@ def _parser() -> argparse.ArgumentParser:
         choices=_MOE_ACTIVATIONS,
         help="FlashInfer activation, e.g. Swiglu",
     )
-    parser.add_argument(
-        "--moe_routing_method",
-        choices=_MOE_ROUTINGS,
-        default="topk",
-        help="FlashInfer routing, e.g. renormalize",
-    )
-    parser.add_argument("--moe_num_expert_group", type=_positive_int)
-    parser.add_argument("--moe_topk_group", type=_positive_int)
-    parser.add_argument("--moe_routed_scaling_factor", type=float)
-    parser.add_argument("--moe_use_routing_bias", action="store_true")
     parser.add_argument("--workdir", type=Path, default=Path("benchmark_via_builtin_out"))
     return parser
 
@@ -522,7 +674,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     ms = list(dict.fromkeys(args.ms))
     try:
-        nks, nk_names = _named_nks(args.nks or [], args.nk_names)
+        nks, names_by_nk = _named_nks(args.nks or [], args.nk_names)
     except ValueError as exc:
         parser.error(str(exc))
     moe_values = (
@@ -537,26 +689,6 @@ def main(argv: list[str] | None = None) -> None:
         parser.error("pass --nks and/or all four --moe_* shape arguments")
     if all(moe_values) and args.moe_top_k > args.moe_num_experts:
         parser.error("--moe_top_k cannot exceed --moe_num_experts")
-    deepseek_values = (
-        args.moe_num_expert_group,
-        args.moe_topk_group,
-        args.moe_routed_scaling_factor,
-    )
-    if args.moe_routing_method == "deepseek_v3" and not all(
-        value is not None for value in deepseek_values
-    ):
-        parser.error(
-            "DeepSeekV3 routing requires --moe_num_expert_group, --moe_topk_group, "
-            "and --moe_routed_scaling_factor"
-        )
-    if args.moe_routed_scaling_factor is not None and args.moe_routed_scaling_factor <= 0:
-        parser.error("--moe_routed_scaling_factor must be positive")
-    if (
-        args.moe_num_expert_group is not None
-        and args.moe_topk_group is not None
-        and args.moe_topk_group > args.moe_num_expert_group
-    ):
-        parser.error("--moe_topk_group cannot exceed --moe_num_expert_group")
 
     benchmarks_dir = args.flashinfer_repo / "benchmarks"
     driver = benchmarks_dir / "flashinfer_benchmark.py"
@@ -575,26 +707,7 @@ def main(argv: list[str] | None = None) -> None:
 
     gemm_cases = _gemm_cases(ms, nks, common)
     moe_shape = moe_values if all(moe_values) else None
-    moe_routing_args = []
-    if args.moe_num_expert_group is not None:
-        moe_routing_args += ["--n_group", str(args.moe_num_expert_group)]
-    if args.moe_topk_group is not None:
-        moe_routing_args += ["--topk_group", str(args.moe_topk_group)]
-    if args.moe_routed_scaling_factor is not None:
-        moe_routing_args += [
-            "--routed_scaling_factor",
-            str(args.moe_routed_scaling_factor),
-        ]
-    if args.moe_use_routing_bias:
-        moe_routing_args.append("--use_routing_bias")
-    moe_cases = _moe_cases(
-        ms,
-        moe_shape,
-        common,
-        args.moe_activation_type,
-        args.moe_routing_method,
-        moe_routing_args,
-    )
+    moe_cases = _moe_cases(ms, moe_shape, common, args.moe_activation_type)
     cases = gemm_cases + moe_cases
 
     args.workdir.mkdir(parents=True, exist_ok=True)
@@ -609,32 +722,56 @@ def main(argv: list[str] | None = None) -> None:
         "\n".join(shlex.join([*case.argv, "--case_tag", case.tag]) for case in cases) + "\n"
     )
 
-    returncode, driver_output = _run_driver(benchmarks_dir, testlist, builtin_csv, driver_log)
+    case_csv = args.workdir / "case_result.csv"
+    rows: list[dict[str, str]] = []
+    errors: dict[str, str] = {}
+    with driver_log.open("w") as log:
+        header = _environment_header(args.flashinfer_repo)
+        print(header, flush=True)
+        log.write(header + "\n")
+        for case in cases:
+            marker = f"[CASE] {case.tag}\n"
+            print(marker, end="", flush=True)
+            log.write(marker)
+            case_csv.unlink(missing_ok=True)
+            returncode, case_output = _run_case(
+                benchmarks_dir,
+                [*case.argv, "--case_tag", case.tag, "--output_path", str(case_csv.resolve())],
+                log,
+            )
+            case_rows = []
+            if case_csv.is_file():
+                with case_csv.open(newline="") as stream:
+                    # A row that does not carry this case's tag would silently
+                    # produce an empty cell later; treat it as a failed case.
+                    case_rows = [
+                        row for row in csv.DictReader(stream) if row.get("case_tag") == case.tag
+                    ]
+            if case_rows:
+                rows.extend(case_rows)
+                continue
+            parsed = _parse_driver_errors(case_output).get(case.tag)
+            if parsed:
+                errors[case.tag] = parsed
+            elif parsed is not None:
+                errors[case.tag] = (
+                    "FlashInfer reported an error without a message (empty exception); "
+                    f"see {driver_log}"
+                )
+            elif returncode:
+                errors[case.tag] = (
+                    f"FlashInfer driver exited with status {returncode} for this case; "
+                    f"see {driver_log}"
+                )
+            else:
+                errors[case.tag] = (
+                    f"FlashInfer produced no result row and no error message; see {driver_log}"
+                )
+    case_csv.unlink(missing_ok=True)
+    if rows:
+        _write_builtin(builtin_csv, rows)
 
-    rows = []
-    if builtin_csv.is_file():
-        with builtin_csv.open(newline="") as stream:
-            rows = list(csv.DictReader(stream))
     completed_tags = {row.get("case_tag") for row in rows}
-    parsed_errors = _parse_driver_errors(driver_output)
-    missing_reason = (
-        f"FlashInfer driver exited with status {returncode} before this case completed"
-        f" (an earlier CUDA fault can poison later cases); see {driver_log}"
-        if returncode
-        else f"FlashInfer produced no result row and no error message; see {driver_log}"
-    )
-    empty_error_reason = (
-        f"FlashInfer reported an error without a message (empty exception); see {driver_log}"
-    )
-    errors = {}
-    for case in cases:
-        if case.tag in completed_tags:
-            continue
-        if case.tag in parsed_errors:
-            errors[case.tag] = parsed_errors[case.tag] or empty_error_reason
-        else:
-            errors[case.tag] = missing_reason
-
     completed_cases = [case for case in cases if case.tag in completed_tags]
     quant = _quant_times(
         completed_cases,
@@ -642,8 +779,13 @@ def main(argv: list[str] | None = None) -> None:
         args.num_iters if args.num_iters is not None else 30,
         not args.no_cuda_graph,
     )
+    moe_label = None
+    if moe_shape:
+        moe_label = f"H={moe_shape[0]} F={moe_shape[1]} E={moe_shape[2]} top_k={moe_shape[3]}"
+        if args.moe_activation_type:
+            moe_label += f" activation={args.moe_activation_type}"
     results = _combine(cases_by_tag, rows, quant, errors)
-    _write_results(combined_csv, results, ms, nks, nk_names)
+    _write_results(combined_csv, results, ms, nks, names_by_nk, header, moe_label)
     print(f"Wrote {combined_csv}")
     if errors:
         failed = [cases_by_tag[tag].key for tag in errors if tag in cases_by_tag]
@@ -652,8 +794,6 @@ def main(argv: list[str] | None = None) -> None:
             + ", ".join(failed)
             + f"; wrote failure details to {combined_csv}"
         )
-    if returncode:
-        raise RuntimeError(f"FlashInfer driver exited with status {returncode}")
 
 
 if __name__ == "__main__":
